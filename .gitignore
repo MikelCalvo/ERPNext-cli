@@ -1,0 +1,16 @@
+# Compiled binary (at root only)
+/erp-cli
+/erpnext-cli
+
+# Configuration file (contains secrets)
+.erp-config
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db

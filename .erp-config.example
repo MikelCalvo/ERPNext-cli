@@ -1,0 +1,34 @@
+# ERPNext CLI Configuration
+# Copy this file to .erp-config and fill in your values
+
+# =============================================================================
+# Connection URLs
+# =============================================================================
+# VPN URL (optional) - Direct access if available, skips reverse proxy
+ERP_VPN="http://YOUR_VPN_IP:8000"
+
+# Internet URL (required) - Public ERPNext URL
+ERP_URL="https://your-erp.example.com"
+
+# =============================================================================
+# API Authentication (required)
+# =============================================================================
+# Generate at: User Settings > API Access > Generate Keys
+ERP_API_KEY="your_api_key_here"
+ERP_API_SECRET="your_api_secret_here"
+
+# =============================================================================
+# Reverse Proxy Authentication (optional)
+# =============================================================================
+# If your ERPNext is behind a reverse proxy with cookie authentication
+NGINX_COOKIE=""
+NGINX_COOKIE_NAME="auth_cookie"
+
+# =============================================================================
+# Instance Configuration (optional)
+# =============================================================================
+# Company name for stock operations (auto-detected if empty)
+ERP_COMPANY=""
+
+# CLI branding shown in TUI
+ERP_BRAND="ERPNext CLI"

@@ -12,7 +12,7 @@ import (
 
 // Version info
 const (
-	Version = "1.3.0"
+	Version = "1.5.0"
 	Author  = "Mikel Calvo"
 	Year    = "2025"
 )
@@ -101,6 +101,30 @@ const (
 	ViewPIDetail
 	ViewCreatePI
 	ViewConfirmAction
+	// Sales module views
+	ViewCustomers
+	ViewCustomerDetail
+	ViewCreateCustomer
+	ViewQuotations
+	ViewQuotationDetail
+	ViewCreateQuotation
+	ViewAddQuotationItem
+	ViewSalesOrders
+	ViewSODetail
+	ViewCreateSO
+	ViewCreateSOFromQuotation
+	ViewAddSOItem
+	ViewSalesInvoices
+	ViewSIDetail
+	ViewCreateSalesInvoice
+	// Delivery Notes views
+	ViewDeliveryNotes
+	ViewDNDetail
+	ViewCreateDN
+	// Purchase Receipts views
+	ViewPurchaseReceipts
+	ViewPRDetail
+	ViewCreatePR
 )
 
 // MenuItem for the main menu
@@ -196,9 +220,15 @@ func NewTUI(client *Client) Model {
 		MenuItem{"Warehouses", "View warehouses", ViewWarehouses},
 		MenuItem{"Stock", "Stock levels & operations", ViewStock},
 		MenuItem{"Serial Numbers", "Track serialized items", ViewSerials},
+		MenuItem{"Customers", "Manage customers", ViewCustomers},
+		MenuItem{"Quotations", "Sales quotations", ViewQuotations},
+		MenuItem{"Sales Orders", "SO workflow", ViewSalesOrders},
+		MenuItem{"Sales Invoices", "Customer invoices", ViewSalesInvoices},
+		MenuItem{"Delivery Notes", "Shipments from SO", ViewDeliveryNotes},
 		MenuItem{"Suppliers", "Manage suppliers", ViewSuppliers},
 		MenuItem{"Purchase Orders", "PO workflow", ViewPurchaseOrders},
 		MenuItem{"Purchase Invoices", "Invoice management", ViewPurchaseInvoices},
+		MenuItem{"Purchase Receipts", "Goods received from PO", ViewPurchaseReceipts},
 	}
 
 	delegate := list.NewDefaultDelegate()
@@ -394,9 +424,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.messageType = ""
 
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "ctrl+c":
+			return m, tea.Quit
+
+		case "q":
+			// 'q' for quit at main, or create from quotation at sales orders
 			if m.view == ViewMain {
 				return m, tea.Quit
+			}
+			// Check for sales 'q' key (create from quotation) before going back
+			result, cmd := m.handleSalesKeys("q")
+			if cmd != nil {
+				return result, cmd
 			}
 			m.view = ViewMain
 			return m, nil
@@ -423,9 +462,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.view = ViewPurchaseOrders
 			case ViewPIDetail:
 				m.view = ViewPurchaseInvoices
+			case ViewCustomerDetail:
+				m.view = ViewCustomers
+			case ViewQuotationDetail:
+				m.view = ViewQuotations
+			case ViewSODetail:
+				m.view = ViewSalesOrders
+			case ViewSIDetail:
+				m.view = ViewSalesInvoices
+			case ViewDNDetail:
+				m.view = ViewDeliveryNotes
+			case ViewPRDetail:
+				m.view = ViewPurchaseReceipts
 			case ViewCreateSupplier, ViewCreateSerial, ViewStockReceive,
 				ViewStockTransfer, ViewStockIssue, ViewCreatePO,
-				ViewAddPOItem, ViewCreatePI:
+				ViewAddPOItem, ViewCreatePI, ViewCreatePR,
+				ViewCreateCustomer, ViewCreateQuotation, ViewAddQuotationItem,
+				ViewCreateSO, ViewCreateSOFromQuotation, ViewAddSOItem, ViewCreateSalesInvoice,
+				ViewCreateDN:
 				// Form views go back to their parent
 				if m.prevView != 0 {
 					m.view = m.prevView
@@ -447,14 +501,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Handle delete for list views
 				switch m.view {
 				case ViewAttributes, ViewItems, ViewTemplates, ViewGroups, ViewBrands,
-					ViewSuppliers, ViewSerials:
+					ViewSuppliers, ViewSerials, ViewCustomers:
 					if item, ok := m.currentList.SelectedItem().(ListItem); ok {
 						m.selectedItem = item.name
 						m.prevView = m.view
 						m.view = ViewConfirmDelete
 						return m, nil
 					}
-				case ViewSupplierDetail, ViewSerialDetail:
+				case ViewSupplierDetail, ViewSerialDetail, ViewCustomerDetail:
 					m.prevView = m.view
 					m.view = ViewConfirmDelete
 					return m, nil
@@ -487,6 +541,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd != nil {
 				return result, cmd
 			}
+			result, cmd = m.handleSalesKeys("n")
+			if cmd != nil {
+				return result, cmd
+			}
 
 		case "r":
 			// Handle 'r' for receive in stock views
@@ -510,29 +568,52 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "i":
-			// Handle 'i' for issue in stock views
+			// Handle 'i' for issue in stock views or invoice from SO
 			result, cmd := m.handleStockKeys("i")
+			if cmd != nil {
+				return result, cmd
+			}
+			result, cmd = m.handleSalesKeys("i")
 			if cmd != nil {
 				return result, cmd
 			}
 
 		case "a":
-			// Handle 'a' for add item in PO detail
+			// Handle 'a' for add item in PO/SO/Quotation detail
 			result, cmd := m.handlePurchasingKeys("a")
+			if cmd != nil {
+				return result, cmd
+			}
+			result, cmd = m.handleSalesKeys("a")
 			if cmd != nil {
 				return result, cmd
 			}
 
 		case "s":
-			// Handle 's' for submit in PO/PI detail
+			// Handle 's' for submit in PO/PI/SO/SI/Quotation detail
 			result, cmd := m.handlePurchasingKeys("s")
+			if cmd != nil {
+				return result, cmd
+			}
+			result, cmd = m.handleSalesKeys("s")
 			if cmd != nil {
 				return result, cmd
 			}
 
 		case "x":
-			// Handle 'x' for cancel in PO/PI detail
+			// Handle 'x' for cancel in PO/PI/SO/SI/Quotation detail
 			result, cmd := m.handlePurchasingKeys("x")
+			if cmd != nil {
+				return result, cmd
+			}
+			result, cmd = m.handleSalesKeys("x")
+			if cmd != nil {
+				return result, cmd
+			}
+
+		case "o":
+			// Handle 'o' for create SO from Quotation in Quotation detail
+			result, cmd := m.handleSalesKeys("o")
 			if cmd != nil {
 				return result, cmd
 			}
@@ -617,10 +698,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.mainMenu, cmd = m.mainMenu.Update(msg)
 	case ViewAttributes, ViewItems, ViewTemplates, ViewGroups, ViewBrands,
 		ViewWarehouses, ViewStock, ViewSerials, ViewSuppliers,
-		ViewPurchaseOrders, ViewPurchaseInvoices:
+		ViewPurchaseOrders, ViewPurchaseInvoices, ViewPurchaseReceipts,
+		ViewCustomers, ViewQuotations, ViewSalesOrders, ViewSalesInvoices, ViewDeliveryNotes:
 		m.currentList, cmd = m.currentList.Update(msg)
 	case ViewCreateSupplier, ViewCreateSerial, ViewStockReceive, ViewStockTransfer, ViewStockIssue,
-		ViewCreatePO, ViewAddPOItem, ViewCreatePI:
+		ViewCreatePO, ViewAddPOItem, ViewCreatePI, ViewCreatePR,
+		ViewCreateCustomer, ViewCreateQuotation, ViewAddQuotationItem,
+		ViewCreateSO, ViewCreateSOFromQuotation, ViewAddSOItem, ViewCreateSalesInvoice,
+		ViewCreateDN:
 		cmd = m.updateFormInputs(msg)
 	}
 
@@ -659,6 +744,18 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 				return m, m.loadPurchaseOrders()
 			case ViewPurchaseInvoices:
 				return m, m.loadPurchaseInvoices()
+			case ViewCustomers:
+				return m, m.loadCustomers()
+			case ViewQuotations:
+				return m, m.loadQuotations()
+			case ViewSalesOrders:
+				return m, m.loadSalesOrders()
+			case ViewSalesInvoices:
+				return m, m.loadSalesInvoices()
+			case ViewDeliveryNotes:
+				return m, m.loadDeliveryNotes()
+			case ViewPurchaseReceipts:
+				return m, m.loadPurchaseReceipts()
 			}
 		}
 
@@ -718,6 +815,54 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 			m.loading = true
 			return m, m.loadPIDetail(item.name)
 		}
+
+	case ViewCustomers:
+		if item, ok := m.currentList.SelectedItem().(ListItem); ok {
+			m.selectedItem = item.name
+			m.view = ViewCustomerDetail
+			m.loading = true
+			return m, m.loadCustomerDetail(item.name)
+		}
+
+	case ViewQuotations:
+		if item, ok := m.currentList.SelectedItem().(ListItem); ok {
+			m.selectedItem = item.name
+			m.view = ViewQuotationDetail
+			m.loading = true
+			return m, m.loadQuotationDetail(item.name)
+		}
+
+	case ViewSalesOrders:
+		if item, ok := m.currentList.SelectedItem().(ListItem); ok {
+			m.selectedItem = item.name
+			m.view = ViewSODetail
+			m.loading = true
+			return m, m.loadSODetail(item.name)
+		}
+
+	case ViewSalesInvoices:
+		if item, ok := m.currentList.SelectedItem().(ListItem); ok {
+			m.selectedItem = item.name
+			m.view = ViewSIDetail
+			m.loading = true
+			return m, m.loadSIDetail(item.name)
+		}
+
+	case ViewDeliveryNotes:
+		if item, ok := m.currentList.SelectedItem().(ListItem); ok {
+			m.selectedItem = item.name
+			m.view = ViewDNDetail
+			m.loading = true
+			return m, m.loadDNDetail(item.name)
+		}
+
+	case ViewPurchaseReceipts:
+		if item, ok := m.currentList.SelectedItem().(ListItem); ok {
+			m.selectedItem = item.name
+			m.view = ViewPRDetail
+			m.loading = true
+			return m, m.loadPRDetail(item.name)
+		}
 	}
 
 	return m, nil
@@ -750,6 +895,18 @@ func (m Model) refreshCurrentView() (tea.Model, tea.Cmd) {
 		return m, m.loadPurchaseOrders()
 	case ViewPurchaseInvoices:
 		return m, m.loadPurchaseInvoices()
+	case ViewCustomers:
+		return m, m.loadCustomers()
+	case ViewQuotations:
+		return m, m.loadQuotations()
+	case ViewSalesOrders:
+		return m, m.loadSalesOrders()
+	case ViewSalesInvoices:
+		return m, m.loadSalesInvoices()
+	case ViewDeliveryNotes:
+		return m, m.loadDeliveryNotes()
+	case ViewPurchaseReceipts:
+		return m, m.loadPurchaseReceipts()
 	}
 	return m, nil
 }
@@ -766,7 +923,8 @@ func (m Model) View() string {
 		content = m.mainMenu.View()
 	case ViewAttributes, ViewItems, ViewTemplates, ViewGroups, ViewBrands,
 		ViewWarehouses, ViewStock, ViewSerials, ViewSuppliers,
-		ViewPurchaseOrders, ViewPurchaseInvoices:
+		ViewPurchaseOrders, ViewPurchaseInvoices, ViewPurchaseReceipts,
+		ViewCustomers, ViewQuotations, ViewSalesOrders, ViewSalesInvoices, ViewDeliveryNotes:
 		if m.loading {
 			content = "\n  Loading..."
 		} else {
@@ -806,6 +964,39 @@ func (m Model) View() string {
 		content = m.renderCreatePI()
 	case ViewConfirmAction:
 		content = m.renderConfirmAction()
+	// Sales module views
+	case ViewCustomerDetail:
+		content = m.renderCustomerDetail()
+	case ViewCreateCustomer:
+		content = m.renderCreateCustomer()
+	case ViewQuotationDetail:
+		content = m.renderQuotationDetail()
+	case ViewCreateQuotation:
+		content = m.renderCreateQuotation()
+	case ViewAddQuotationItem:
+		content = m.renderAddQuotationItem()
+	case ViewSODetail:
+		content = m.renderSODetail()
+	case ViewCreateSO:
+		content = m.renderCreateSO()
+	case ViewCreateSOFromQuotation:
+		content = m.renderCreateSOFromQuotation()
+	case ViewAddSOItem:
+		content = m.renderAddSOItem()
+	case ViewSIDetail:
+		content = m.renderSIDetail()
+	case ViewCreateSalesInvoice:
+		content = m.renderCreateSI()
+	// Delivery Notes views
+	case ViewDNDetail:
+		content = m.renderDNDetail()
+	case ViewCreateDN:
+		content = m.renderCreateDN()
+	// Purchase Receipts views
+	case ViewPRDetail:
+		content = m.renderPRDetail()
+	case ViewCreatePR:
+		content = m.renderCreatePR()
 	}
 
 	var b strings.Builder
@@ -875,16 +1066,44 @@ func (m Model) renderHelp() string {
 		help = "esc: back • r: receive • t: transfer • i: issue"
 	case ViewSerialDetail, ViewSupplierDetail:
 		help = "esc: back • d: delete"
-	case ViewPODetail:
-		help = "esc: back • a: add item • s: submit • x: cancel PO"
 	case ViewPIDetail:
 		help = "esc: back • s: submit • x: cancel"
+	// Sales views
+	case ViewCustomers:
+		help = "↑/↓: navigate • enter: detail • n: new • d: delete • /: search • esc: back"
+	case ViewQuotations:
+		help = "↑/↓: navigate • enter: detail • n: new • /: search • esc: back"
+	case ViewSalesOrders:
+		help = "↑/↓: navigate • enter: detail • n: new • q: from quotation • /: search • esc: back"
+	case ViewSalesInvoices:
+		help = "↑/↓: navigate • enter: detail • n: new • /: search • esc: back"
+	case ViewCustomerDetail:
+		help = "esc: back • d: delete"
+	case ViewQuotationDetail:
+		help = "esc: back • a: add item • s: submit • x: cancel • o: create SO"
+	case ViewSODetail:
+		help = "esc: back • a: add item • s: submit • x: cancel • i: create invoice • r: create DN"
+	case ViewSIDetail:
+		help = "esc: back • s: submit • x: cancel"
+	case ViewDeliveryNotes:
+		help = "↑/↓: navigate • enter: detail • n: new from SO • /: search • esc: back"
+	case ViewDNDetail:
+		help = "esc: back • s: submit • x: cancel"
+	case ViewPurchaseReceipts:
+		help = "↑/↓: navigate • enter: detail • n: new from PO • /: search • esc: back"
+	case ViewPRDetail:
+		help = "esc: back • s: submit • x: cancel"
+	case ViewPODetail:
+		help = "esc: back • a: add item • s: submit • x: cancel PO • r: create PR"
 	case ViewDashboard:
 		help = "r: refresh • esc: back"
 	case ViewConfirmDelete, ViewConfirmAction:
 		help = "y: confirm • n: cancel"
 	case ViewCreateSupplier, ViewCreateSerial, ViewStockReceive, ViewStockTransfer,
-		ViewStockIssue, ViewCreatePO, ViewAddPOItem, ViewCreatePI:
+		ViewStockIssue, ViewCreatePO, ViewAddPOItem, ViewCreatePI, ViewCreatePR,
+		ViewCreateCustomer, ViewCreateQuotation, ViewAddQuotationItem,
+		ViewCreateSO, ViewCreateSOFromQuotation, ViewAddSOItem, ViewCreateSalesInvoice,
+		ViewCreateDN:
 		help = "tab: next field • enter: submit • esc: cancel"
 	}
 	return helpStyle.Render(help)

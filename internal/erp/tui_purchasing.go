@@ -186,22 +186,9 @@ func (m Model) loadPurchaseOrders() tea.Cmd {
 					status, _ := im["status"].(string)
 					total, _ := im["grand_total"].(float64)
 
-					statusIcon := ""
-					switch status {
-					case "Draft":
-						statusIcon = "Draft"
-					case "To Receive and Bill", "To Receive":
-						statusIcon = "Pending"
-					case "Completed":
-						statusIcon = "Completed"
-					case "Cancelled":
-						statusIcon = "Cancelled"
-					default:
-						statusIcon = status
-					}
-
-					detail := fmt.Sprintf("%s | %s | %s", supplier, statusIcon, m.client.FormatCurrency(total))
-					items = append(items, ListItem{name: name, details: detail})
+					statusBadge := renderStatusBadge(status)
+					detail := fmt.Sprintf("%s | %s | %s", supplier, statusBadge, m.client.FormatCurrency(total))
+					items = append(items, ListItem{name: name, details: detail, amount: total, status: status})
 				}
 			}
 		}
@@ -480,22 +467,9 @@ func (m Model) loadPurchaseInvoices() tea.Cmd {
 					status, _ := im["status"].(string)
 					total, _ := im["grand_total"].(float64)
 
-					statusIcon := ""
-					switch status {
-					case "Draft":
-						statusIcon = "Draft"
-					case "Unpaid":
-						statusIcon = "Unpaid"
-					case "Paid":
-						statusIcon = "Paid"
-					case "Cancelled":
-						statusIcon = "Cancelled"
-					default:
-						statusIcon = status
-					}
-
-					detail := fmt.Sprintf("%s | %s | %s", supplier, statusIcon, m.client.FormatCurrency(total))
-					items = append(items, ListItem{name: name, details: detail})
+					statusBadge := renderStatusBadge(status)
+					detail := fmt.Sprintf("%s | %s | %s", supplier, statusBadge, m.client.FormatCurrency(total))
+					items = append(items, ListItem{name: name, details: detail, amount: total, status: status})
 				}
 			}
 		}
@@ -717,24 +691,9 @@ func (m Model) loadPurchaseReceipts() tea.Cmd {
 					status, _ := im["status"].(string)
 					total, _ := im["grand_total"].(float64)
 
-					statusIcon := ""
-					switch status {
-					case "Draft":
-						statusIcon = "Draft"
-					case "To Bill":
-						statusIcon = "To Bill"
-					case "Completed":
-						statusIcon = "Completed"
-					case "Cancelled":
-						statusIcon = "Cancelled"
-					case "Return Issued":
-						statusIcon = "Return"
-					default:
-						statusIcon = status
-					}
-
-					detail := fmt.Sprintf("%s | %s | %s", supplier, statusIcon, m.client.FormatCurrency(total))
-					items = append(items, ListItem{name: name, details: detail})
+					statusBadge := renderStatusBadge(status)
+					detail := fmt.Sprintf("%s | %s | %s", supplier, statusBadge, m.client.FormatCurrency(total))
+					items = append(items, ListItem{name: name, details: detail, amount: total, status: status})
 				}
 			}
 		}
@@ -984,6 +943,16 @@ func (m *Model) handlePurchasingKeys(key string) (tea.Model, tea.Cmd) {
 					m.confirmMsg = fmt.Sprintf("Cancel PO %s?", m.selectedItem)
 					m.prevView = m.view
 					m.view = ViewConfirmAction
+					return m, nil
+				}
+			}
+		case "i":
+			// Create Purchase Invoice from PO
+			if m.itemData != nil {
+				if docStatus, ok := m.itemData["docstatus"].(float64); ok && docStatus == 1 {
+					m.initCreatePIFromPOForm()
+					m.prevView = m.view
+					m.view = ViewCreatePIFromPO
 					return m, nil
 				}
 			}

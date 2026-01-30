@@ -79,7 +79,8 @@ This is a Go CLI application for managing ERPNext instances, featuring both comm
 | `tui_stock.go` | Warehouses, Stock operations, Serial Numbers |
 | `tui_purchasing.go` | Suppliers, Purchase Orders, Purchase Invoices, Purchase Receipts |
 | `tui_sales.go` | Customers, Quotations, Sales Orders, Sales Invoices, Delivery Notes, Payments |
-| `tui_forms.go` | Reusable form components, confirmations, helpers |
+| `tui_inventory.go` | CRUD for Attributes, Groups, Brands, Warehouses, Variants |
+| `tui_forms.go` | Reusable form components, confirmations, list footer, helpers |
 
 ### Command Pattern
 
@@ -116,38 +117,39 @@ The client auto-detects the company's default currency:
 ### TUI Implementation
 
 Uses Charm's BubbleTea framework:
-- `Model` struct holds all state (view, lists, inputs, data)
+- `Model` struct holds all state (view, lists, inputs, data, spinner, breadcrumbs, notifications)
 - Views: main menu, lists, details, forms, confirmations
 - Async data loading via custom message types (`dataLoadedMsg`, `itemDetailMsg`, etc.)
 - Navigation: Esc to go back, q to quit from main menu
 - Forms: Tab to navigate fields, Enter to submit, Esc to cancel
-- Key shortcuts: n=new, d=delete, r=refresh/receive, t=transfer, i=issue/invoice, s=submit, x=cancel, o=create SO, q=from quotation, p=create payment
+- Key shortcuts: n=new, d=delete, r=refresh/receive, t=transfer, i=issue/invoice, s=submit, x=cancel, o=sort order (lists)/create SO (quotations), q=from quotation, p=create payment, v=create variant (templates)
 
-**TUI Main Menu** (19 options):
-1. Dashboard - Executive summary with KPIs
-2. Attributes - Item attributes CRUD
-3. Items - All items list
-4. Templates - Item templates
-5. Groups - Item groups
-6. Brands - Brand management
-7. Warehouses - View warehouses
-8. Stock - Stock levels & operations (receive/transfer/issue)
-9. Serial Numbers - Serialized item tracking
-10. Customers - Customer CRUD
-11. Quotations - Sales quotations workflow
-12. Sales Orders - SO workflow (can create from quotation)
-13. Sales Invoices - Customer invoices from SO
-14. Delivery Notes - Shipments from SO
-15. Suppliers - Supplier CRUD
-16. Purchase Orders - Full PO workflow
-17. Purchase Invoices - Invoice from PO workflow
-18. Purchase Receipts - Goods received from PO
-19. Payments - Receive/Pay invoices
+**v1.7.0 TUI Features:**
+- Animated spinner (dots) while loading data
+- Breadcrumb navigation trail (Main > Section > Item)
+- Auto-dismissing success notifications (3s)
+- Colored status badges (Draft/Submitted/Paid/Unpaid/Cancelled)
+- Dashboard: 5 sections (Stock, Sales, Purchases, Payments, System)
+
+**v1.7.0 TUI Features (continued):**
+- **Quick Actions**: 'i' in PO detail creates PI, 'v' in template detail creates variant
+- **List sorting**: 'o' key cycles through Date↓, Date↑, Name, Total↓ (indicator in title)
+- **List footer**: Shows total items, total amount, and status counts (draft/unpaid/pending)
+- **CRUD for master data**: Create Attributes (text/numeric/select), Groups, Brands, Warehouses
+- ListItem extended with `amount` and `status` fields for aggregations
+
+**TUI Main Menu** (6 categories with submenus):
+1. **Dashboard** - Executive summary with KPIs (direct view)
+2. **Inventory** → Items, Templates, Groups, Brands, Attributes
+3. **Stock** → Warehouses, Stock Levels, Serial Numbers
+4. **Sales** → Customers, Quotations, Sales Orders, Sales Invoices, Delivery Notes
+5. **Purchasing** → Suppliers, Purchase Orders, Purchase Invoices, Purchase Receipts
+6. **Payments** → All Payments (receive/pay invoices)
 
 ### Reports Module
 
 Dashboard fetches data in parallel using goroutines:
-- `fetchStockMetrics()`, `fetchPurchaseMetrics()`, `fetchSystemMetrics()`
+- `fetchStockMetrics()`, `fetchPurchaseMetrics()`, `fetchSystemMetrics()`, `fetchSalesMetrics()`, `fetchPaymentMetrics()`
 - Uses `sync.WaitGroup` and `sync.Mutex` for coordination
 - Pre-fetches currency before rendering
 
@@ -168,7 +170,7 @@ Required fields: `ERP_URL`, `ERP_API_KEY`, `ERP_API_SECRET`
 Version constant is in `internal/erp/tui.go`:
 ```go
 const (
-    Version = "1.6.0"
+    Version = "1.7.0"
     Author  = "Mikel Calvo"
     Year    = "2025"
 )

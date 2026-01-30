@@ -119,6 +119,25 @@ func (m *Model) submitCurrentForm() tea.Cmd {
 	case ViewCreatePayment:
 		m.prevView = ViewPayments
 		return m.submitCreatePayment()
+	// CRUD forms for master data
+	case ViewCreateGroup:
+		m.prevView = ViewGroups
+		return m.submitCreateGroup()
+	case ViewCreateBrand:
+		m.prevView = ViewBrands
+		return m.submitCreateBrand()
+	case ViewCreateWarehouse:
+		m.prevView = ViewWarehouses
+		return m.submitCreateWarehouse()
+	case ViewCreateVariant:
+		m.prevView = ViewTemplates
+		return m.submitCreateVariant()
+	case ViewCreateAttrText, ViewCreateAttrNumeric, ViewCreateAttrSelect:
+		m.prevView = ViewAttributes
+		return m.submitCreateAttr()
+	case ViewCreatePIFromPO:
+		m.prevView = ViewPurchaseInvoices
+		return m.submitCreatePIFromPO()
 	}
 
 	return nil
@@ -214,61 +233,124 @@ func (m *Model) handleDeleteForView() tea.Cmd {
 
 // setListTitle sets the title for the current list based on view
 func (m *Model) setListTitle() {
+	var title string
 	switch m.view {
 	case ViewAttributes:
-		m.currentList.Title = "Attributes"
+		title = "Attributes"
 	case ViewItems:
-		m.currentList.Title = "Items"
+		title = "Items"
 	case ViewTemplates:
-		m.currentList.Title = "Templates"
+		title = "Templates"
 	case ViewGroups:
-		m.currentList.Title = "Groups"
+		title = "Groups"
 	case ViewBrands:
-		m.currentList.Title = "Brands"
+		title = "Brands"
 	case ViewWarehouses:
-		m.currentList.Title = "Warehouses"
+		title = "Warehouses"
 	case ViewStock:
-		m.currentList.Title = "Stock"
+		title = "Stock"
 	case ViewSerials:
-		m.currentList.Title = "Serial Numbers"
+		title = "Serial Numbers"
 	case ViewSuppliers:
-		m.currentList.Title = "Suppliers"
+		title = "Suppliers"
 	case ViewPurchaseOrders:
-		m.currentList.Title = "Purchase Orders"
+		title = "Purchase Orders"
 	case ViewPurchaseInvoices:
-		m.currentList.Title = "Purchase Invoices"
+		title = "Purchase Invoices"
 	case ViewCustomers:
-		m.currentList.Title = "Customers"
+		title = "Customers"
 	case ViewQuotations:
-		m.currentList.Title = "Quotations"
+		title = "Quotations"
 	case ViewSalesOrders:
-		m.currentList.Title = "Sales Orders"
+		title = "Sales Orders"
 	case ViewSalesInvoices:
-		m.currentList.Title = "Sales Invoices"
+		title = "Sales Invoices"
 	case ViewDeliveryNotes:
-		m.currentList.Title = "Delivery Notes"
+		title = "Delivery Notes"
 	case ViewPurchaseReceipts:
-		m.currentList.Title = "Purchase Receipts"
+		title = "Purchase Receipts"
 	case ViewPayments:
-		m.currentList.Title = "Payments"
+		title = "Payments"
 	}
+
+	// Add sort order indicator for list views that support it
+	if m.isListView() {
+		sortLabel := m.getSortOrderLabel()
+		if sortLabel != "" {
+			title = fmt.Sprintf("%s (%s)", title, sortLabel)
+		}
+	}
+
+	m.currentList.Title = title
 	m.currentList.Styles.Title = titleStyle
 }
 
-// formatStatusBadge returns a styled status badge
-func formatStatusBadge(status string) string {
-	var style = helpStyle
-
+// renderStatusBadge returns a styled status badge with background color
+func renderStatusBadge(status string) string {
 	switch strings.ToLower(status) {
 	case "draft":
-		style = internetStyle
+		return draftBadge.Render(status)
 	case "active", "completed", "paid", "submitted":
-		style = successStyle
+		return submittedBadge.Render(status)
 	case "cancelled", "expired", "overdue":
-		style = errorStyle
-	case "pending", "to receive", "to receive and bill", "unpaid":
-		style = vpnStyle
+		return cancelledBadge.Render(status)
+	case "unpaid":
+		return unpaidBadge.Render(status)
+	case "pending", "to receive", "to receive and bill", "open", "to deliver", "to bill", "to deliver and bill":
+		return pendingBadge.Render(status)
+	default:
+		return helpStyle.Render(status)
+	}
+}
+
+// renderListFooter renders the footer with totals for list views
+func (m Model) renderListFooter() string {
+	if !m.isListView() || len(m.listItems) == 0 {
+		return ""
 	}
 
-	return style.Render(status)
+	// Calculate totals
+	totalAmount := 0.0
+	statusCounts := make(map[string]int)
+
+	for _, item := range m.listItems {
+		totalAmount += item.amount
+		if item.status != "" {
+			statusCounts[item.status]++
+		}
+	}
+
+	// Build footer
+	var parts []string
+	parts = append(parts, fmt.Sprintf("%d items", len(m.listItems)))
+	parts = append(parts, fmt.Sprintf("Total: %s", m.client.FormatCurrency(totalAmount)))
+
+	// Add most relevant status count (Draft or Unpaid)
+	if count, ok := statusCounts["Draft"]; ok && count > 0 {
+		parts = append(parts, fmt.Sprintf("%d draft", count))
+	} else if count, ok := statusCounts["Unpaid"]; ok && count > 0 {
+		parts = append(parts, fmt.Sprintf("%d unpaid", count))
+	} else if count, ok := statusCounts["To Receive and Bill"]; ok && count > 0 {
+		parts = append(parts, fmt.Sprintf("%d pending", count))
+	}
+
+	footer := strings.Join(parts, " │ ")
+	return "\n" + helpStyle.Render("───────────────────────────────────────\n "+footer)
 }
+
+// getSortOrderLabel returns the label for the current sort order
+func (m Model) getSortOrderLabel() string {
+	switch m.sortOrder {
+	case 0:
+		return "↓Date"
+	case 1:
+		return "↑Date"
+	case 2:
+		return "Name"
+	case 3:
+		return "↓Total"
+	default:
+		return ""
+	}
+}
+

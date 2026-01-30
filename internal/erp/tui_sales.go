@@ -186,26 +186,9 @@ func (m Model) loadQuotations() tea.Cmd {
 					status, _ := im["status"].(string)
 					total, _ := im["grand_total"].(float64)
 
-					statusIcon := ""
-					switch status {
-					case "Draft":
-						statusIcon = "Draft"
-					case "Open", "Submitted":
-						statusIcon = "Open"
-					case "Ordered":
-						statusIcon = "Ordered"
-					case "Lost":
-						statusIcon = "Lost"
-					case "Cancelled":
-						statusIcon = "Cancelled"
-					case "Expired":
-						statusIcon = "Expired"
-					default:
-						statusIcon = status
-					}
-
-					detail := fmt.Sprintf("%s | %s | %s", customer, statusIcon, m.client.FormatCurrency(total))
-					items = append(items, ListItem{name: name, details: detail})
+					statusBadge := renderStatusBadge(status)
+					detail := fmt.Sprintf("%s | %s | %s", customer, statusBadge, m.client.FormatCurrency(total))
+					items = append(items, ListItem{name: name, details: detail, amount: total, status: status})
 				}
 			}
 		}
@@ -481,24 +464,9 @@ func (m Model) loadSalesOrders() tea.Cmd {
 					status, _ := im["status"].(string)
 					total, _ := im["grand_total"].(float64)
 
-					statusIcon := ""
-					switch status {
-					case "Draft":
-						statusIcon = "Draft"
-					case "To Deliver and Bill", "To Deliver":
-						statusIcon = "Pending"
-					case "To Bill":
-						statusIcon = "To Bill"
-					case "Completed":
-						statusIcon = "Completed"
-					case "Cancelled":
-						statusIcon = "Cancelled"
-					default:
-						statusIcon = status
-					}
-
-					detail := fmt.Sprintf("%s | %s | %s", customer, statusIcon, m.client.FormatCurrency(total))
-					items = append(items, ListItem{name: name, details: detail})
+					statusBadge := renderStatusBadge(status)
+					detail := fmt.Sprintf("%s | %s | %s", customer, statusBadge, m.client.FormatCurrency(total))
+					items = append(items, ListItem{name: name, details: detail, amount: total, status: status})
 				}
 			}
 		}
@@ -868,24 +836,9 @@ func (m Model) loadSalesInvoices() tea.Cmd {
 					status, _ := im["status"].(string)
 					total, _ := im["grand_total"].(float64)
 
-					statusIcon := ""
-					switch status {
-					case "Draft":
-						statusIcon = "Draft"
-					case "Unpaid":
-						statusIcon = "Unpaid"
-					case "Paid":
-						statusIcon = "Paid"
-					case "Overdue":
-						statusIcon = "Overdue"
-					case "Cancelled":
-						statusIcon = "Cancelled"
-					default:
-						statusIcon = status
-					}
-
-					detail := fmt.Sprintf("%s | %s | %s", customer, statusIcon, m.client.FormatCurrency(total))
-					items = append(items, ListItem{name: name, details: detail})
+					statusBadge := renderStatusBadge(status)
+					detail := fmt.Sprintf("%s | %s | %s", customer, statusBadge, m.client.FormatCurrency(total))
+					items = append(items, ListItem{name: name, details: detail, amount: total, status: status})
 				}
 			}
 		}
@@ -1102,24 +1055,9 @@ func (m Model) loadDeliveryNotes() tea.Cmd {
 					status, _ := im["status"].(string)
 					total, _ := im["grand_total"].(float64)
 
-					statusIcon := ""
-					switch status {
-					case "Draft":
-						statusIcon = "Draft"
-					case "To Bill":
-						statusIcon = "To Bill"
-					case "Completed":
-						statusIcon = "Completed"
-					case "Cancelled":
-						statusIcon = "Cancelled"
-					case "Return Issued":
-						statusIcon = "Return"
-					default:
-						statusIcon = status
-					}
-
-					detail := fmt.Sprintf("%s | %s | %s", customer, statusIcon, m.client.FormatCurrency(total))
-					items = append(items, ListItem{name: name, details: detail})
+					statusBadge := renderStatusBadge(status)
+					detail := fmt.Sprintf("%s | %s | %s", customer, statusBadge, m.client.FormatCurrency(total))
+					items = append(items, ListItem{name: name, details: detail, amount: total, status: status})
 				}
 			}
 		}
@@ -1336,8 +1274,9 @@ func (m Model) loadPayments() tea.Cmd {
 						typeIcon = "↑"
 					}
 
-					detail := fmt.Sprintf("%s %s | %s | %s", typeIcon, party, status, m.client.FormatCurrency(amount))
-					items = append(items, ListItem{name: name, details: detail})
+					statusBadge := renderStatusBadge(status)
+					detail := fmt.Sprintf("%s %s | %s | %s", typeIcon, party, statusBadge, m.client.FormatCurrency(amount))
+					items = append(items, ListItem{name: name, details: detail, amount: amount, status: status})
 				}
 			}
 		}

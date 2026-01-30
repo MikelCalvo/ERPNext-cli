@@ -16,16 +16,31 @@ type ReportData struct {
 	ZeroStockItems  int
 
 	// Purchasing
-	DraftPOs       int
-	DraftPOValue   float64
-	PendingPOs     int
-	PendingPOValue float64
-	UnpaidInvoices int
-	UnpaidValue    float64
-	TopSuppliers   []SupplierStat
+	DraftPOs        int
+	DraftPOValue    float64
+	PendingPOs      int
+	PendingPOValue  float64
+	CompletedPOs    int
+	CompletedPOValue float64
+	UnpaidInvoices  int
+	UnpaidValue     float64
+	TopSuppliers    []SupplierStat
+
+	// Sales
+	OpenQuotations   int
+	PendingSOs       int
+	CompletedSOs     int
+	CompletedSOValue float64
+	UnpaidSIs        int
+	UnpaidSIValue    float64
+
+	// Payments
+	TotalReceivables float64 // Outstanding from customers
+	TotalPayables    float64 // Outstanding to suppliers
 
 	// System
 	TotalSuppliers  int
+	TotalCustomers  int
 	TotalWarehouses int
 	TotalGroups     int
 
@@ -75,7 +90,7 @@ func (c *Client) reportSummary() error {
 	var mu sync.Mutex
 	data := &ReportData{}
 
-	wg.Add(3)
+	wg.Add(5)
 	go func() {
 		defer wg.Done()
 		c.fetchStockMetrics(data, &mu)
@@ -87,6 +102,14 @@ func (c *Client) reportSummary() error {
 	go func() {
 		defer wg.Done()
 		c.fetchSystemMetrics(data, &mu)
+	}()
+	go func() {
+		defer wg.Done()
+		c.fetchSalesMetrics(data, &mu)
+	}()
+	go func() {
+		defer wg.Done()
+		c.fetchPaymentMetrics(data, &mu)
 	}()
 	wg.Wait()
 
@@ -165,24 +188,36 @@ func (c *Client) fetchPurchaseMetrics(data *ReportData, mu *sync.Mutex) {
 	if err == nil {
 		if pos, ok := result["data"].([]interface{}); ok {
 			total := 0.0
-			supplierCounts := make(map[string]int)
-			supplierValues := make(map[string]float64)
 			for _, po := range pos {
 				if m, ok := po.(map[string]interface{}); ok {
 					if val, ok := m["grand_total"].(float64); ok {
 						total += val
-					}
-					if supplier, ok := m["supplier"].(string); ok {
-						supplierCounts[supplier]++
-						if val, ok := m["grand_total"].(float64); ok {
-							supplierValues[supplier] += val
-						}
 					}
 				}
 			}
 			mu.Lock()
 			data.PendingPOs = len(pos)
 			data.PendingPOValue = total
+			mu.Unlock()
+		}
+	}
+
+	// Completed POs (status=Completed)
+	filter = url.QueryEscape(`[["docstatus","=",1],["status","=","Completed"]]`)
+	result, err = c.Request("GET", "Purchase%20Order?limit_page_length=0&filters="+filter+"&fields=[\"name\",\"grand_total\"]", nil)
+	if err == nil {
+		if pos, ok := result["data"].([]interface{}); ok {
+			total := 0.0
+			for _, po := range pos {
+				if m, ok := po.(map[string]interface{}); ok {
+					if val, ok := m["grand_total"].(float64); ok {
+						total += val
+					}
+				}
+			}
+			mu.Lock()
+			data.CompletedPOs = len(pos)
+			data.CompletedPOValue = total
 			mu.Unlock()
 		}
 	}
@@ -262,6 +297,16 @@ func (c *Client) fetchSystemMetrics(data *ReportData, mu *sync.Mutex) {
 		}
 	}
 
+	// Customers
+	result, err = c.Request("GET", "Customer?limit_page_length=0&fields=[\"name\"]", nil)
+	if err == nil {
+		if items, ok := result["data"].([]interface{}); ok {
+			mu.Lock()
+			data.TotalCustomers = len(items)
+			mu.Unlock()
+		}
+	}
+
 	// Warehouses
 	result, err = c.Request("GET", "Warehouse?limit_page_length=0&fields=[\"name\"]", nil)
 	if err == nil {
@@ -278,6 +323,111 @@ func (c *Client) fetchSystemMetrics(data *ReportData, mu *sync.Mutex) {
 		if items, ok := result["data"].([]interface{}); ok {
 			mu.Lock()
 			data.TotalGroups = len(items)
+			mu.Unlock()
+		}
+	}
+}
+
+// fetchSalesMetrics fetches sales-related metrics
+func (c *Client) fetchSalesMetrics(data *ReportData, mu *sync.Mutex) {
+	// Open Quotations (docstatus=1, status=Open)
+	filter := url.QueryEscape(`[["docstatus","=",1],["status","=","Open"]]`)
+	result, err := c.Request("GET", "Quotation?limit_page_length=0&filters="+filter+"&fields=[\"name\"]", nil)
+	if err == nil {
+		if items, ok := result["data"].([]interface{}); ok {
+			mu.Lock()
+			data.OpenQuotations = len(items)
+			mu.Unlock()
+		}
+	}
+
+	// Pending Sales Orders (To Deliver and Bill, To Deliver, To Bill)
+	filter = url.QueryEscape(`[["docstatus","=",1],["status","in",["To Deliver and Bill","To Deliver","To Bill"]]]`)
+	result, err = c.Request("GET", "Sales%20Order?limit_page_length=0&filters="+filter+"&fields=[\"name\"]", nil)
+	if err == nil {
+		if items, ok := result["data"].([]interface{}); ok {
+			mu.Lock()
+			data.PendingSOs = len(items)
+			mu.Unlock()
+		}
+	}
+
+	// Completed Sales Orders (status=Completed)
+	filter = url.QueryEscape(`[["docstatus","=",1],["status","=","Completed"]]`)
+	result, err = c.Request("GET", "Sales%20Order?limit_page_length=0&filters="+filter+"&fields=[\"name\",\"grand_total\"]", nil)
+	if err == nil {
+		if items, ok := result["data"].([]interface{}); ok {
+			total := 0.0
+			for _, item := range items {
+				if m, ok := item.(map[string]interface{}); ok {
+					if val, ok := m["grand_total"].(float64); ok {
+						total += val
+					}
+				}
+			}
+			mu.Lock()
+			data.CompletedSOs = len(items)
+			data.CompletedSOValue = total
+			mu.Unlock()
+		}
+	}
+
+	// Unpaid Sales Invoices (outstanding_amount > 0)
+	filter = url.QueryEscape(`[["docstatus","=",1],["outstanding_amount",">",0]]`)
+	result, err = c.Request("GET", "Sales%20Invoice?limit_page_length=0&filters="+filter+"&fields=[\"name\",\"outstanding_amount\"]", nil)
+	if err == nil {
+		if invoices, ok := result["data"].([]interface{}); ok {
+			total := 0.0
+			for _, inv := range invoices {
+				if m, ok := inv.(map[string]interface{}); ok {
+					if val, ok := m["outstanding_amount"].(float64); ok {
+						total += val
+					}
+				}
+			}
+			mu.Lock()
+			data.UnpaidSIs = len(invoices)
+			data.UnpaidSIValue = total
+			mu.Unlock()
+		}
+	}
+}
+
+// fetchPaymentMetrics fetches payment-related metrics
+func (c *Client) fetchPaymentMetrics(data *ReportData, mu *sync.Mutex) {
+	// Total Receivables (outstanding from customers - Sales Invoices)
+	filter := url.QueryEscape(`[["docstatus","=",1],["outstanding_amount",">",0]]`)
+	result, err := c.Request("GET", "Sales%20Invoice?limit_page_length=0&filters="+filter+"&fields=[\"outstanding_amount\"]", nil)
+	if err == nil {
+		if invoices, ok := result["data"].([]interface{}); ok {
+			total := 0.0
+			for _, inv := range invoices {
+				if m, ok := inv.(map[string]interface{}); ok {
+					if val, ok := m["outstanding_amount"].(float64); ok {
+						total += val
+					}
+				}
+			}
+			mu.Lock()
+			data.TotalReceivables = total
+			mu.Unlock()
+		}
+	}
+
+	// Total Payables (outstanding to suppliers - Purchase Invoices)
+	result, err = c.Request("GET", "Purchase%20Invoice?limit_page_length=0&filters="+filter+"&fields=[\"outstanding_amount\"]", nil)
+	if err == nil {
+		if invoices, ok := result["data"].([]interface{}); ok {
+			total := 0.0
+			for _, inv := range invoices {
+				if m, ok := inv.(map[string]interface{}); ok {
+					if val, ok := m["outstanding_amount"].(float64); ok {
+						total += val
+					}
+				}
+			}
+			mu.Lock()
+			data.TotalPayables = total
 			mu.Unlock()
 		}
 	}

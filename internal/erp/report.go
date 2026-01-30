@@ -68,6 +68,9 @@ func (c *Client) CmdReport(args []string) error {
 func (c *Client) reportSummary() error {
 	fmt.Printf("%sLoading dashboard...%s\n", Blue, Reset)
 
+	// Pre-fetch currency
+	c.GetCurrency()
+
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	data := &ReportData{}
@@ -294,7 +297,7 @@ func (c *Client) renderDashboard(data *ReportData) error {
 	// Stock Section
 	fmt.Printf("%s┌─ STOCK ─────────────────────────────────────────────────────┐%s\n", Yellow, Reset)
 	fmt.Printf("%s│%s  Items totales:        %-6d                                %s│%s\n", Yellow, Reset, data.TotalItems, Yellow, Reset)
-	fmt.Printf("%s│%s  Valor inventario:     $%-12.2f                       %s│%s\n", Yellow, Reset, data.TotalStockValue, Yellow, Reset)
+	fmt.Printf("%s│%s  Valor inventario:     %-15s                    %s│%s\n", Yellow, Reset, c.FormatCurrency(data.TotalStockValue), Yellow, Reset)
 	if data.ZeroStockItems > 0 {
 		fmt.Printf("%s│%s  Sin stock:            %s%-3d ⚠%s                               %s│%s\n", Yellow, Reset, Red, data.ZeroStockItems, Reset, Yellow, Reset)
 	} else {
@@ -305,10 +308,10 @@ func (c *Client) renderDashboard(data *ReportData) error {
 
 	// Purchasing Section
 	fmt.Printf("%s┌─ COMPRAS ───────────────────────────────────────────────────┐%s\n", Yellow, Reset)
-	fmt.Printf("%s│%s  POs en borrador:      %-3d ($%.2f)                   %s│%s\n", Yellow, Reset, data.DraftPOs, data.DraftPOValue, Yellow, Reset)
-	fmt.Printf("%s│%s  POs por recibir:      %-3d ($%.2f)                   %s│%s\n", Yellow, Reset, data.PendingPOs, data.PendingPOValue, Yellow, Reset)
+	fmt.Printf("%s│%s  POs en borrador:      %-3d (%s)                     %s│%s\n", Yellow, Reset, data.DraftPOs, c.FormatCurrency(data.DraftPOValue), Yellow, Reset)
+	fmt.Printf("%s│%s  POs por recibir:      %-3d (%s)                     %s│%s\n", Yellow, Reset, data.PendingPOs, c.FormatCurrency(data.PendingPOValue), Yellow, Reset)
 	if data.UnpaidInvoices > 0 {
-		fmt.Printf("%s│%s  Facturas pendientes:  %s%-3d ($%.2f)%s                   %s│%s\n", Yellow, Reset, Red, data.UnpaidInvoices, data.UnpaidValue, Reset, Yellow, Reset)
+		fmt.Printf("%s│%s  Facturas pendientes:  %s%-3d (%s)%s                     %s│%s\n", Yellow, Reset, Red, data.UnpaidInvoices, c.FormatCurrency(data.UnpaidValue), Reset, Yellow, Reset)
 	} else {
 		fmt.Printf("%s│%s  Facturas pendientes:  %-3d                                  %s│%s\n", Yellow, Reset, data.UnpaidInvoices, Yellow, Reset)
 	}
@@ -339,8 +342,12 @@ func (c *Client) renderDashboard(data *ReportData) error {
 	if c.Mode == "internet" {
 		modeStr = "Internet"
 	}
+	currencyStr := "USD"
+	if c.Currency != nil {
+		currencyStr = c.Currency.Code
+	}
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
-	fmt.Printf("Generado: %s | Modo: %s%s%s\n", timestamp, Cyan, modeStr, Reset)
+	fmt.Printf("Generado: %s | Modo: %s%s%s | Divisa: %s%s%s\n", timestamp, Cyan, modeStr, Reset, Cyan, currencyStr, Reset)
 
 	// Show errors if any
 	if len(data.Errors) > 0 {
@@ -357,6 +364,9 @@ func (c *Client) renderDashboard(data *ReportData) error {
 // reportStock displays detailed stock report
 func (c *Client) reportStock() error {
 	fmt.Printf("%sGenerating stock report...%s\n\n", Blue, Reset)
+
+	// Pre-fetch currency
+	c.GetCurrency()
 
 	// Get all bins with stock data
 	result, err := c.Request("GET", "Bin?limit_page_length=0&fields=[\"item_code\",\"warehouse\",\"actual_qty\",\"stock_value\",\"reserved_qty\",\"ordered_qty\"]&order_by=item_code", nil)
@@ -397,7 +407,7 @@ func (c *Client) reportStock() error {
 		// Print summary
 		fmt.Printf("%sSummary:%s\n", Yellow, Reset)
 		fmt.Printf("  Total items with stock entries: %d\n", len(itemCount))
-		fmt.Printf("  Total stock value: $%.2f\n", totalValue)
+		fmt.Printf("  Total stock value: %s\n", c.FormatCurrency(totalValue))
 		fmt.Printf("  Total quantity: %.0f units\n", totalQty)
 		fmt.Printf("  Zero stock entries: %d\n\n", zeroStock)
 
@@ -420,7 +430,7 @@ func (c *Client) reportStock() error {
 		for wh, value := range warehouseData {
 			qty := warehouseQty[wh]
 			fmt.Printf("  📦 %s\n", wh)
-			fmt.Printf("     Quantity: %.0f | Value: $%.2f\n", qty, value)
+			fmt.Printf("     Quantity: %.0f | Value: %s\n", qty, c.FormatCurrency(value))
 		}
 	}
 
@@ -431,6 +441,9 @@ func (c *Client) reportStock() error {
 // reportPurchases displays detailed purchasing report
 func (c *Client) reportPurchases() error {
 	fmt.Printf("%sGenerating purchasing report...%s\n\n", Blue, Reset)
+
+	// Pre-fetch currency
+	c.GetCurrency()
 
 	fmt.Printf("%s══════════════════════════════════════════════════════════════%s\n", Cyan, Reset)
 	fmt.Printf("%s                    PURCHASING REPORT                         %s\n", Cyan, Reset)
@@ -447,8 +460,9 @@ func (c *Client) reportPurchases() error {
 			} else {
 				for _, po := range pos {
 					if m, ok := po.(map[string]interface{}); ok {
-						fmt.Printf("  - %s: %s ($%.2f) - %s\n",
-							m["name"], m["supplier"], m["grand_total"], m["transaction_date"])
+						total, _ := m["grand_total"].(float64)
+						fmt.Printf("  - %s: %s (%s) - %s\n",
+							m["name"], m["supplier"], c.FormatCurrency(total), m["transaction_date"])
 					}
 				}
 			}
@@ -470,11 +484,11 @@ func (c *Client) reportPurchases() error {
 					if m, ok := po.(map[string]interface{}); ok {
 						val, _ := m["grand_total"].(float64)
 						totalPending += val
-						fmt.Printf("  - %s: %s ($%.2f) - %s\n",
-							m["name"], m["supplier"], val, m["status"])
+						fmt.Printf("  - %s: %s (%s) - %s\n",
+							m["name"], m["supplier"], c.FormatCurrency(val), m["status"])
 					}
 				}
-				fmt.Printf("  %sTotal pending: $%.2f%s\n", Cyan, totalPending, Reset)
+				fmt.Printf("  %sTotal pending: %s%s\n", Cyan, c.FormatCurrency(totalPending), Reset)
 			}
 		}
 	}
@@ -493,12 +507,13 @@ func (c *Client) reportPurchases() error {
 				for _, inv := range invoices {
 					if m, ok := inv.(map[string]interface{}); ok {
 						outstanding, _ := m["outstanding_amount"].(float64)
+						grandTotal, _ := m["grand_total"].(float64)
 						totalUnpaid += outstanding
-						fmt.Printf("  - %s: %s (Outstanding: $%.2f of $%.2f) - %s\n",
-							m["name"], m["supplier"], outstanding, m["grand_total"], m["posting_date"])
+						fmt.Printf("  - %s: %s (Outstanding: %s of %s) - %s\n",
+							m["name"], m["supplier"], c.FormatCurrency(outstanding), c.FormatCurrency(grandTotal), m["posting_date"])
 					}
 				}
-				fmt.Printf("  %sTotal outstanding: $%.2f%s\n", Red, totalUnpaid, Reset)
+				fmt.Printf("  %sTotal outstanding: %s%s\n", Red, c.FormatCurrency(totalUnpaid), Reset)
 			}
 		}
 	}
@@ -541,7 +556,7 @@ func (c *Client) reportPurchases() error {
 					fmt.Printf("  ... and %d more suppliers\n", len(suppliers)-10)
 					break
 				}
-				fmt.Printf("  %2d. %-30s %3d POs  $%.2f\n", i+1, s.Name, s.POCount, s.Value)
+				fmt.Printf("  %2d. %-30s %3d POs  %s\n", i+1, s.Name, s.POCount, c.FormatCurrency(s.Value))
 			}
 		}
 	}

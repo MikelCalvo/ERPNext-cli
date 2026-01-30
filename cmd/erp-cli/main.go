@@ -84,6 +84,8 @@ func main() {
 		cmdErr = client.CmdPO(os.Args[2:])
 	case "pi":
 		cmdErr = client.CmdPI(os.Args[2:])
+	case "report", "dashboard":
+		cmdErr = client.CmdReport(os.Args[2:])
 	case "export":
 		cmdErr = client.CmdExport(os.Args[2:])
 	case "import":
@@ -195,6 +197,11 @@ Usage: erp-cli <command> [subcommand] [args...]
   %simport items -f <file> [--dry-run]%s Import items from CSV
   %simport variants -f <file> [--dry-run]%s Import variants from CSV
 
+%sReports:%s
+  %sreport%s                            Executive dashboard
+  %sreport stock%s                      Detailed stock report
+  %sreport purchases%s                  Detailed purchasing report
+
 %sExamples:%s
   erp-cli ping
   erp-cli attr create-text "CPU Model"
@@ -232,6 +239,8 @@ Usage: erp-cli <command> [subcommand] [args...]
 		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,
 		erp.Yellow, erp.Reset,
 		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,
+		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,
+		erp.Yellow, erp.Reset,
 		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,
 		erp.Yellow, erp.Reset,
 	)

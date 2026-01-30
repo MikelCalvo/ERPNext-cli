@@ -81,6 +81,7 @@ This is a Go CLI application for managing ERPNext instances, featuring both comm
 | `tui_sales.go` | Customers, Quotations, Sales Orders, Sales Invoices, Delivery Notes, Payments |
 | `tui_inventory.go` | CRUD for Attributes, Groups, Brands, Warehouses, Variants |
 | `tui_forms.go` | Reusable form components, confirmations, list footer, helpers |
+| `tui_setup.go` | Setup wizard for first-run config creation |
 
 ### Command Pattern
 
@@ -165,12 +166,21 @@ Searched in order:
 
 Required fields: `ERP_URL`, `ERP_API_KEY`, `ERP_API_SECRET`
 
+### Setup Wizard (v1.7.1)
+
+When no config file exists, the TUI launches a guided setup wizard:
+- `tui_setup.go` contains `SetupModel` (independent from main TUI Model)
+- Collects: ERP URL, API Key, API Secret, VPN URL (optional)
+- Validates connection before saving config
+- Creates `.erp-config` in current directory with proper permissions (0600)
+- Uses `ConfigExists()` in `client.go` to check for existing config
+
 ## Version Management
 
 Version constant is in `internal/erp/tui.go`:
 ```go
 const (
-    Version = "1.7.0"
+    Version = "1.7.1"
     Author  = "Mikel Calvo"
     Year    = "2025"
 )

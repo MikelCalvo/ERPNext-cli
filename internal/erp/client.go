@@ -13,6 +13,31 @@ import (
 	"time"
 )
 
+// configPaths returns the list of paths to search for config file
+func configPaths() []string {
+	return []string{
+		".erp-config",
+		"../.erp-config",
+		filepath.Join(filepath.Dir(os.Args[0]), ".erp-config"),
+		filepath.Join(filepath.Dir(os.Args[0]), "..", ".erp-config"),
+	}
+}
+
+// ConfigExists checks if the config file exists in any of the search paths
+func ConfigExists() bool {
+	for _, path := range configPaths() {
+		if _, err := os.Stat(path); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// decodeJSON decodes JSON from a reader into a map
+func decodeJSON(r io.Reader, v interface{}) error {
+	return json.NewDecoder(r).Decode(v)
+}
+
 // Colors for terminal output
 const (
 	Red    = "\033[0;31m"
@@ -53,15 +78,8 @@ type Client struct {
 // LoadConfig reads the .erp-config file
 func LoadConfig() (*Config, error) {
 	// Find config file in various locations
-	configPaths := []string{
-		".erp-config",
-		"../.erp-config",
-		filepath.Join(filepath.Dir(os.Args[0]), ".erp-config"),
-		filepath.Join(filepath.Dir(os.Args[0]), "..", ".erp-config"),
-	}
-
 	var configPath string
-	for _, p := range configPaths {
+	for _, p := range configPaths() {
 		if _, err := os.Stat(p); err == nil {
 			configPath = p
 			break

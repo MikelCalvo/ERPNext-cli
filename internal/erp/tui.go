@@ -12,7 +12,7 @@ import (
 
 // Version info
 const (
-	Version = "1.2.0"
+	Version = "1.3.0"
 	Author  = "Mikel Calvo"
 	Year    = "2025"
 )
@@ -79,6 +79,28 @@ const (
 	ViewCreateItem
 	ViewCreateTemplate
 	ViewConfirmDelete
+	// New views for TUI parity
+	ViewDashboard
+	ViewWarehouses
+	ViewStock
+	ViewStockDetail
+	ViewStockReceive
+	ViewStockTransfer
+	ViewStockIssue
+	ViewSerials
+	ViewSerialDetail
+	ViewCreateSerial
+	ViewSuppliers
+	ViewSupplierDetail
+	ViewCreateSupplier
+	ViewPurchaseOrders
+	ViewPODetail
+	ViewCreatePO
+	ViewAddPOItem
+	ViewPurchaseInvoices
+	ViewPIDetail
+	ViewCreatePI
+	ViewConfirmAction
 )
 
 // MenuItem for the main menu
@@ -118,6 +140,12 @@ type Model struct {
 	loading      bool
 	selectedItem string
 	itemData     map[string]interface{}
+	// New fields for extended functionality
+	dashboardData *ReportData
+	formData      map[string]string
+	confirmAction string
+	confirmMsg    string
+	listData      []map[string]interface{} // Raw data for detail views
 }
 
 // Messages
@@ -143,14 +171,34 @@ type actionDoneMsg struct {
 	message string
 }
 
+type dashboardLoadedMsg struct {
+	data *ReportData
+}
+
+type stockDataMsg struct {
+	items []map[string]interface{}
+}
+
+type formSubmittedMsg struct {
+	success bool
+	message string
+}
+
 // NewTUI creates a new TUI model
 func NewTUI(client *Client) Model {
 	menuItems := []list.Item{
+		MenuItem{"Dashboard", "Executive summary & KPIs", ViewDashboard},
 		MenuItem{"Attributes", "Manage item attributes", ViewAttributes},
 		MenuItem{"Items", "View all items", ViewItems},
 		MenuItem{"Templates", "Manage item templates", ViewTemplates},
 		MenuItem{"Groups", "Manage item groups", ViewGroups},
 		MenuItem{"Brands", "Manage brands", ViewBrands},
+		MenuItem{"Warehouses", "View warehouses", ViewWarehouses},
+		MenuItem{"Stock", "Stock levels & operations", ViewStock},
+		MenuItem{"Serial Numbers", "Track serialized items", ViewSerials},
+		MenuItem{"Suppliers", "Manage suppliers", ViewSuppliers},
+		MenuItem{"Purchase Orders", "PO workflow", ViewPurchaseOrders},
+		MenuItem{"Purchase Invoices", "Invoice management", ViewPurchaseInvoices},
 	}
 
 	delegate := list.NewDefaultDelegate()
@@ -168,6 +216,7 @@ func NewTUI(client *Client) Model {
 		view:     ViewMain,
 		mainMenu: mainMenu,
 		loading:  true,
+		formData: make(map[string]string),
 	}
 }
 
@@ -217,9 +266,13 @@ func (m Model) loadAttributes() tea.Cmd {
 
 func (m Model) loadItems(templatesOnly bool) tea.Cmd {
 	return func() tea.Msg {
-		endpoint := "Item?limit_page_length=0"
+		var endpoint string
 		if templatesOnly {
+			// Only templates (has_variants=1)
 			endpoint = "Item?limit_page_length=0&filters=%5B%5B%22has_variants%22%2C%22%3D%22%2C1%5D%5D"
+		} else {
+			// Only regular items, exclude templates (has_variants=0)
+			endpoint = "Item?limit_page_length=0&filters=%5B%5B%22has_variants%22%2C%22%3D%22%2C0%5D%5D"
 		}
 
 		result, err := m.client.Request("GET", endpoint, nil)
@@ -349,18 +402,59 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "esc":
-			if m.view != ViewMain {
+			switch m.view {
+			case ViewMain:
+				// Do nothing at main
+			case ViewAttrDetail:
+				m.view = ViewAttributes
+			case ViewItemDetail:
+				if m.prevView == ViewTemplates {
+					m.view = ViewTemplates
+				} else {
+					m.view = ViewItems
+				}
+			case ViewStockDetail:
+				m.view = ViewStock
+			case ViewSerialDetail:
+				m.view = ViewSerials
+			case ViewSupplierDetail:
+				m.view = ViewSuppliers
+			case ViewPODetail:
+				m.view = ViewPurchaseOrders
+			case ViewPIDetail:
+				m.view = ViewPurchaseInvoices
+			case ViewCreateSupplier, ViewCreateSerial, ViewStockReceive,
+				ViewStockTransfer, ViewStockIssue, ViewCreatePO,
+				ViewAddPOItem, ViewCreatePI:
+				// Form views go back to their parent
+				if m.prevView != 0 {
+					m.view = m.prevView
+				} else {
+					m.view = ViewMain
+				}
+			case ViewConfirmDelete, ViewConfirmAction:
+				m.view = m.prevView
+			default:
 				m.view = ViewMain
-				return m, nil
 			}
+			return m, nil
 
 		case "enter":
 			return m.handleEnter()
 
 		case "d":
-			if m.view != ViewMain && m.view != ViewConfirmDelete {
-				if item, ok := m.currentList.SelectedItem().(ListItem); ok {
-					m.selectedItem = item.name
+			if m.view != ViewMain && m.view != ViewConfirmDelete && m.view != ViewConfirmAction {
+				// Handle delete for list views
+				switch m.view {
+				case ViewAttributes, ViewItems, ViewTemplates, ViewGroups, ViewBrands,
+					ViewSuppliers, ViewSerials:
+					if item, ok := m.currentList.SelectedItem().(ListItem); ok {
+						m.selectedItem = item.name
+						m.prevView = m.view
+						m.view = ViewConfirmDelete
+						return m, nil
+					}
+				case ViewSupplierDetail, ViewSerialDetail:
 					m.prevView = m.view
 					m.view = ViewConfirmDelete
 					return m, nil
@@ -369,21 +463,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "y":
 			if m.view == ViewConfirmDelete {
-				var itemType string
-				switch m.prevView {
-				case ViewAttributes:
-					itemType = "attr"
-				case ViewItems:
-					itemType = "item"
-				case ViewTemplates:
-					itemType = "template"
-				case ViewGroups:
-					itemType = "group"
-				case ViewBrands:
-					itemType = "brand"
-				}
 				m.view = m.prevView
-				return m, m.deleteItem(itemType, m.selectedItem)
+				return m, m.handleDeleteForView()
+			}
+			if m.view == ViewConfirmAction {
+				return m, m.handleConfirmAction(true)
 			}
 
 		case "n":
@@ -391,9 +475,67 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.view = m.prevView
 				return m, nil
 			}
+			if m.view == ViewConfirmAction {
+				return m, m.handleConfirmAction(false)
+			}
+			// Handle 'n' for new in list views
+			result, cmd := m.handlePurchasingKeys("n")
+			if cmd != nil {
+				return result, cmd
+			}
+			result, cmd = m.handleStockKeys("n")
+			if cmd != nil {
+				return result, cmd
+			}
 
 		case "r":
+			// Handle 'r' for receive in stock views
+			if m.view == ViewStock || m.view == ViewStockDetail {
+				result, cmd := m.handleStockKeys("r")
+				if cmd != nil {
+					return result, cmd
+				}
+			}
+			// Otherwise refresh
+			if m.view == ViewDashboard {
+				return m.refreshCurrentView()
+			}
 			return m.refreshCurrentView()
+
+		case "t":
+			// Handle 't' for transfer in stock views
+			result, cmd := m.handleStockKeys("t")
+			if cmd != nil {
+				return result, cmd
+			}
+
+		case "i":
+			// Handle 'i' for issue in stock views
+			result, cmd := m.handleStockKeys("i")
+			if cmd != nil {
+				return result, cmd
+			}
+
+		case "a":
+			// Handle 'a' for add item in PO detail
+			result, cmd := m.handlePurchasingKeys("a")
+			if cmd != nil {
+				return result, cmd
+			}
+
+		case "s":
+			// Handle 's' for submit in PO/PI detail
+			result, cmd := m.handlePurchasingKeys("s")
+			if cmd != nil {
+				return result, cmd
+			}
+
+		case "x":
+			// Handle 'x' for cancel in PO/PI detail
+			result, cmd := m.handlePurchasingKeys("x")
+			if cmd != nil {
+				return result, cmd
+			}
 		}
 
 	case tea.WindowSizeMsg:
@@ -434,19 +576,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.currentList.SetShowStatusBar(true)
 		m.currentList.SetFilteringEnabled(true)
 
-		switch m.view {
-		case ViewAttributes:
-			m.currentList.Title = "Attributes"
-		case ViewItems:
-			m.currentList.Title = "Items"
-		case ViewTemplates:
-			m.currentList.Title = "Templates"
-		case ViewGroups:
-			m.currentList.Title = "Groups"
-		case ViewBrands:
-			m.currentList.Title = "Brands"
-		}
-		m.currentList.Styles.Title = titleStyle
+		m.setListTitle()
 		return m, nil
 
 	case itemDetailMsg:
@@ -458,14 +588,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.message = msg.message
 		m.messageType = "success"
 		return m.refreshCurrentView()
+
+	case dashboardLoadedMsg:
+		m.loading = false
+		m.dashboardData = msg.data
+		return m, nil
+
+	case stockDataMsg:
+		m.loading = false
+		m.listData = msg.items
+		return m, nil
+
+	case formSubmittedMsg:
+		m.loading = false
+		if msg.success {
+			m.message = msg.message
+			m.messageType = "success"
+			return m.refreshCurrentView()
+		}
+		m.message = msg.message
+		m.messageType = "error"
+		return m, nil
 	}
 
 	var cmd tea.Cmd
 	switch m.view {
 	case ViewMain:
 		m.mainMenu, cmd = m.mainMenu.Update(msg)
-	case ViewAttributes, ViewItems, ViewTemplates, ViewGroups, ViewBrands:
+	case ViewAttributes, ViewItems, ViewTemplates, ViewGroups, ViewBrands,
+		ViewWarehouses, ViewStock, ViewSerials, ViewSuppliers,
+		ViewPurchaseOrders, ViewPurchaseInvoices:
 		m.currentList, cmd = m.currentList.Update(msg)
+	case ViewCreateSupplier, ViewCreateSerial, ViewStockReceive, ViewStockTransfer, ViewStockIssue,
+		ViewCreatePO, ViewAddPOItem, ViewCreatePI:
+		cmd = m.updateFormInputs(msg)
 	}
 
 	return m, cmd
@@ -479,6 +635,8 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 			m.loading = true
 
 			switch item.view {
+			case ViewDashboard:
+				return m, m.loadDashboard()
 			case ViewAttributes:
 				return m, m.loadAttributes()
 			case ViewItems:
@@ -489,6 +647,18 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 				return m, m.loadGroups()
 			case ViewBrands:
 				return m, m.loadBrands()
+			case ViewWarehouses:
+				return m, m.loadWarehouses()
+			case ViewStock:
+				return m, m.loadStock()
+			case ViewSerials:
+				return m, m.loadSerials("")
+			case ViewSuppliers:
+				return m, m.loadSuppliers()
+			case ViewPurchaseOrders:
+				return m, m.loadPurchaseOrders()
+			case ViewPurchaseInvoices:
+				return m, m.loadPurchaseInvoices()
 			}
 		}
 
@@ -503,9 +673,50 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 	case ViewItems, ViewTemplates:
 		if item, ok := m.currentList.SelectedItem().(ListItem); ok {
 			m.selectedItem = item.name
+			m.prevView = m.view
 			m.view = ViewItemDetail
 			m.loading = true
 			return m, m.loadItemDetail(item.name)
+		}
+
+	case ViewStock:
+		if item, ok := m.currentList.SelectedItem().(ListItem); ok {
+			m.selectedItem = item.name
+			m.view = ViewStockDetail
+			m.loading = true
+			return m, m.loadStockDetail(item.name)
+		}
+
+	case ViewSerials:
+		if item, ok := m.currentList.SelectedItem().(ListItem); ok {
+			m.selectedItem = item.name
+			m.view = ViewSerialDetail
+			m.loading = true
+			return m, m.loadSerialDetail(item.name)
+		}
+
+	case ViewSuppliers:
+		if item, ok := m.currentList.SelectedItem().(ListItem); ok {
+			m.selectedItem = item.name
+			m.view = ViewSupplierDetail
+			m.loading = true
+			return m, m.loadSupplierDetail(item.name)
+		}
+
+	case ViewPurchaseOrders:
+		if item, ok := m.currentList.SelectedItem().(ListItem); ok {
+			m.selectedItem = item.name
+			m.view = ViewPODetail
+			m.loading = true
+			return m, m.loadPODetail(item.name)
+		}
+
+	case ViewPurchaseInvoices:
+		if item, ok := m.currentList.SelectedItem().(ListItem); ok {
+			m.selectedItem = item.name
+			m.view = ViewPIDetail
+			m.loading = true
+			return m, m.loadPIDetail(item.name)
 		}
 	}
 
@@ -525,6 +736,20 @@ func (m Model) refreshCurrentView() (tea.Model, tea.Cmd) {
 		return m, m.loadGroups()
 	case ViewBrands:
 		return m, m.loadBrands()
+	case ViewDashboard:
+		return m, m.loadDashboard()
+	case ViewWarehouses:
+		return m, m.loadWarehouses()
+	case ViewStock:
+		return m, m.loadStock()
+	case ViewSerials:
+		return m, m.loadSerials("")
+	case ViewSuppliers:
+		return m, m.loadSuppliers()
+	case ViewPurchaseOrders:
+		return m, m.loadPurchaseOrders()
+	case ViewPurchaseInvoices:
+		return m, m.loadPurchaseInvoices()
 	}
 	return m, nil
 }
@@ -539,7 +764,9 @@ func (m Model) View() string {
 	switch m.view {
 	case ViewMain:
 		content = m.mainMenu.View()
-	case ViewAttributes, ViewItems, ViewTemplates, ViewGroups, ViewBrands:
+	case ViewAttributes, ViewItems, ViewTemplates, ViewGroups, ViewBrands,
+		ViewWarehouses, ViewStock, ViewSerials, ViewSuppliers,
+		ViewPurchaseOrders, ViewPurchaseInvoices:
 		if m.loading {
 			content = "\n  Loading..."
 		} else {
@@ -549,6 +776,36 @@ func (m Model) View() string {
 		content = m.renderDetail()
 	case ViewConfirmDelete:
 		content = m.renderConfirmDelete()
+	case ViewDashboard:
+		content = m.renderDashboard()
+	case ViewStockDetail:
+		content = m.renderStockDetail()
+	case ViewSerialDetail:
+		content = m.renderSerialDetail()
+	case ViewSupplierDetail:
+		content = m.renderSupplierDetail()
+	case ViewPODetail:
+		content = m.renderPODetail()
+	case ViewPIDetail:
+		content = m.renderPIDetail()
+	case ViewCreateSupplier:
+		content = m.renderCreateSupplier()
+	case ViewCreateSerial:
+		content = m.renderCreateSerial()
+	case ViewStockReceive:
+		content = m.renderStockReceive()
+	case ViewStockTransfer:
+		content = m.renderStockTransfer()
+	case ViewStockIssue:
+		content = m.renderStockIssue()
+	case ViewCreatePO:
+		content = m.renderCreatePO()
+	case ViewAddPOItem:
+		content = m.renderAddPOItem()
+	case ViewCreatePI:
+		content = m.renderCreatePI()
+	case ViewConfirmAction:
+		content = m.renderConfirmAction()
 	}
 
 	var b strings.Builder
@@ -600,10 +857,35 @@ func (m Model) renderHelp() string {
 		help = "↑/↓: navigate • enter: select • q: quit"
 	case ViewAttributes, ViewItems, ViewTemplates, ViewGroups, ViewBrands:
 		help = "↑/↓: navigate • enter: view detail • d: delete • r: refresh • /: search • esc: back"
+	case ViewWarehouses:
+		help = "↑/↓: navigate • r: refresh • /: search • esc: back"
+	case ViewStock:
+		help = "↑/↓: navigate • enter: detail • r: receive • t: transfer • i: issue • esc: back"
+	case ViewSerials:
+		help = "↑/↓: navigate • enter: detail • n: new • d: delete • /: search • esc: back"
+	case ViewSuppliers:
+		help = "↑/↓: navigate • enter: detail • n: new • d: delete • /: search • esc: back"
+	case ViewPurchaseOrders:
+		help = "↑/↓: navigate • enter: detail • n: new PO • /: search • esc: back"
+	case ViewPurchaseInvoices:
+		help = "↑/↓: navigate • enter: detail • /: search • esc: back"
 	case ViewAttrDetail, ViewItemDetail:
 		help = "esc: back • d: delete"
-	case ViewConfirmDelete:
+	case ViewStockDetail:
+		help = "esc: back • r: receive • t: transfer • i: issue"
+	case ViewSerialDetail, ViewSupplierDetail:
+		help = "esc: back • d: delete"
+	case ViewPODetail:
+		help = "esc: back • a: add item • s: submit • x: cancel PO"
+	case ViewPIDetail:
+		help = "esc: back • s: submit • x: cancel"
+	case ViewDashboard:
+		help = "r: refresh • esc: back"
+	case ViewConfirmDelete, ViewConfirmAction:
 		help = "y: confirm • n: cancel"
+	case ViewCreateSupplier, ViewCreateSerial, ViewStockReceive, ViewStockTransfer,
+		ViewStockIssue, ViewCreatePO, ViewAddPOItem, ViewCreatePI:
+		help = "tab: next field • enter: submit • esc: cancel"
 	}
 	return helpStyle.Render(help)
 }

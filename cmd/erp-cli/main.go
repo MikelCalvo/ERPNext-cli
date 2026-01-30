@@ -78,6 +78,12 @@ func main() {
 		cmdErr = client.CmdStock(os.Args[2:])
 	case "serial":
 		cmdErr = client.CmdSerial(os.Args[2:])
+	case "supplier":
+		cmdErr = client.CmdSupplier(os.Args[2:])
+	case "po":
+		cmdErr = client.CmdPO(os.Args[2:])
+	case "pi":
+		cmdErr = client.CmdPI(os.Args[2:])
 	case "export":
 		cmdErr = client.CmdExport(os.Args[2:])
 	case "import":
@@ -157,6 +163,30 @@ Usage: erp-cli <command> [subcommand] [args...]
   %sserial create-batch <item> <prefix> <start> <count>%s
                                       Create multiple serial numbers
 
+%sSuppliers:%s
+  %ssupplier list%s                     List all suppliers
+  %ssupplier get <name>%s               Get supplier details
+  %ssupplier create <name>%s            Create a new supplier
+  %ssupplier delete <name>%s            Delete a supplier
+
+%sPurchase Orders:%s
+  %spo list [--supplier=X] [--status=X]%s
+                                      List purchase orders
+  %spo get <name>%s                     Get PO details with items
+  %spo create <supplier>%s              Create draft PO
+  %spo add-item <po> <item> <qty> [--rate=X]%s
+                                      Add item to PO
+  %spo submit <name>%s                  Submit PO
+  %spo cancel <name>%s                  Cancel PO
+
+%sPurchase Invoices:%s
+  %spi list [--supplier=X] [--status=X]%s
+                                      List purchase invoices
+  %spi get <name>%s                     Get invoice details
+  %spi create-from-po <po_name>%s       Create invoice from PO
+  %spi submit <name>%s                  Submit invoice
+  %spi cancel <name>%s                  Cancel invoice
+
 %sImport/Export:%s
   %sexport items -o <file>%s            Export items to CSV
   %sexport templates -o <file>%s        Export templates to CSV
@@ -194,6 +224,12 @@ Usage: erp-cli <command> [subcommand] [args...]
 		erp.Green, erp.Reset, erp.Green, erp.Reset,
 		erp.Yellow, erp.Reset,
 		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,
+		erp.Yellow, erp.Reset,
+		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,
+		erp.Yellow, erp.Reset,
+		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,
+		erp.Yellow, erp.Reset,
+		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,
 		erp.Yellow, erp.Reset,
 		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,
 		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,

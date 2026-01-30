@@ -58,13 +58,22 @@ This is a Go CLI application for managing ERPNext instances, featuring both comm
 | `attr.go` | Item attribute CRUD operations |
 | `item.go` | Items, templates, groups, brands management |
 | `variant.go` | Variant creation and listing |
-| `stock.go` | Warehouse and stock operations |
-| `serial.go` | Serial number management |
+| `stock.go` | Warehouse and stock operations (CLI) |
+| `serial.go` | Serial number management (CLI) |
 | `import.go` | CSV import/export functionality |
-| `tui.go` | Interactive terminal UI (BubbleTea), version constant |
-| `supplier.go` | Supplier management |
-| `purchase.go` | Purchase Orders and Purchase Invoices |
-| `report.go` | Dashboard and reports (stock, purchases) |
+| `supplier.go` | Supplier management (CLI) |
+| `purchase.go` | Purchase Orders and Purchase Invoices (CLI) |
+| `report.go` | Dashboard and reports (CLI) |
+
+### TUI Files in `internal/erp/`
+
+| File | Purpose |
+|------|---------|
+| `tui.go` | Core TUI: Model, Views enum, menu, navigation, Update/View |
+| `tui_dashboard.go` | Dashboard view with metrics display |
+| `tui_stock.go` | Warehouses, Stock operations, Serial Numbers |
+| `tui_purchasing.go` | Suppliers, Purchase Orders, Purchase Invoices |
+| `tui_forms.go` | Reusable form components, confirmations, helpers |
 
 ### Command Pattern
 
@@ -101,10 +110,26 @@ The client auto-detects the company's default currency:
 ### TUI Implementation
 
 Uses Charm's BubbleTea framework:
-- `Model` struct holds all state
-- Views: menu, lists, details, create forms, delete confirmation
-- Async data loading via custom message types
-- Navigation: Esc to go back, q to quit
+- `Model` struct holds all state (view, lists, inputs, data)
+- Views: main menu, lists, details, forms, confirmations
+- Async data loading via custom message types (`dataLoadedMsg`, `itemDetailMsg`, etc.)
+- Navigation: Esc to go back, q to quit from main menu
+- Forms: Tab to navigate fields, Enter to submit, Esc to cancel
+- Key shortcuts: n=new, d=delete, r=refresh/receive, t=transfer, i=issue, s=submit, x=cancel
+
+**TUI Main Menu** (12 options):
+1. Dashboard - Executive summary with KPIs
+2. Attributes - Item attributes CRUD
+3. Items - All items list
+4. Templates - Item templates
+5. Groups - Item groups
+6. Brands - Brand management
+7. Warehouses - View warehouses
+8. Stock - Stock levels & operations (receive/transfer/issue)
+9. Serial Numbers - Serialized item tracking
+10. Suppliers - Supplier CRUD
+11. Purchase Orders - Full PO workflow
+12. Purchase Invoices - Invoice from PO workflow
 
 ### Reports Module
 
@@ -130,7 +155,7 @@ Required fields: `ERP_URL`, `ERP_API_KEY`, `ERP_API_SECRET`
 Version constant is in `internal/erp/tui.go`:
 ```go
 const (
-    Version = "1.2.0"
+    Version = "1.3.0"
     Author  = "Mikel Calvo"
     Year    = "2025"
 )

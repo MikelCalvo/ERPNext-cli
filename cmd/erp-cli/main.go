@@ -10,6 +10,19 @@ import (
 func main() {
 	// No arguments or "tui" command -> launch TUI
 	if len(os.Args) < 2 || os.Args[1] == "tui" {
+		// Check if config exists, if not launch setup wizard
+		if !erp.ConfigExists() {
+			if err := erp.RunSetupTUI(); err != nil {
+				fmt.Printf("%sError: %s%s\n", erp.Red, err, erp.Reset)
+				os.Exit(1)
+			}
+			// After setup, check if config was created
+			if !erp.ConfigExists() {
+				// User cancelled setup
+				os.Exit(0)
+			}
+		}
+
 		config, err := erp.LoadConfig()
 		if err != nil {
 			fmt.Printf("%sError: %s%s\n", erp.Red, err, erp.Reset)

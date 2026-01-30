@@ -12,7 +12,7 @@ import (
 
 // Version info
 const (
-	Version = "1.6.0"
+	Version = "1.6.1"
 	Author  = "Mikel Calvo"
 	Year    = "2025"
 )

@@ -67,6 +67,7 @@ This is a Go CLI application for managing ERPNext instances, featuring both comm
 | `sales.go` | Quotations, Sales Orders, Sales Invoices (CLI) |
 | `delivery.go` | Delivery Notes (CLI) |
 | `receipt.go` | Purchase Receipts (CLI) |
+| `payment.go` | Payment Entries (CLI) - receive/pay invoices |
 | `report.go` | Dashboard and reports (CLI) |
 
 ### TUI Files in `internal/erp/`
@@ -77,7 +78,7 @@ This is a Go CLI application for managing ERPNext instances, featuring both comm
 | `tui_dashboard.go` | Dashboard view with metrics display |
 | `tui_stock.go` | Warehouses, Stock operations, Serial Numbers |
 | `tui_purchasing.go` | Suppliers, Purchase Orders, Purchase Invoices, Purchase Receipts |
-| `tui_sales.go` | Customers, Quotations, Sales Orders, Sales Invoices, Delivery Notes |
+| `tui_sales.go` | Customers, Quotations, Sales Orders, Sales Invoices, Delivery Notes, Payments |
 | `tui_forms.go` | Reusable form components, confirmations, helpers |
 
 ### Command Pattern
@@ -120,9 +121,9 @@ Uses Charm's BubbleTea framework:
 - Async data loading via custom message types (`dataLoadedMsg`, `itemDetailMsg`, etc.)
 - Navigation: Esc to go back, q to quit from main menu
 - Forms: Tab to navigate fields, Enter to submit, Esc to cancel
-- Key shortcuts: n=new, d=delete, r=refresh/receive, t=transfer, i=issue/invoice, s=submit, x=cancel, o=create SO, q=from quotation
+- Key shortcuts: n=new, d=delete, r=refresh/receive, t=transfer, i=issue/invoice, s=submit, x=cancel, o=create SO, q=from quotation, p=create payment
 
-**TUI Main Menu** (18 options):
+**TUI Main Menu** (19 options):
 1. Dashboard - Executive summary with KPIs
 2. Attributes - Item attributes CRUD
 3. Items - All items list
@@ -141,6 +142,7 @@ Uses Charm's BubbleTea framework:
 16. Purchase Orders - Full PO workflow
 17. Purchase Invoices - Invoice from PO workflow
 18. Purchase Receipts - Goods received from PO
+19. Payments - Receive/Pay invoices
 
 ### Reports Module
 
@@ -166,7 +168,7 @@ Required fields: `ERP_URL`, `ERP_API_KEY`, `ERP_API_SECRET`
 Version constant is in `internal/erp/tui.go`:
 ```go
 const (
-    Version = "1.5.0"
+    Version = "1.6.0"
     Author  = "Mikel Calvo"
     Year    = "2025"
 )

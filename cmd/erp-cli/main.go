@@ -96,6 +96,8 @@ func main() {
 		cmdErr = client.CmdDN(os.Args[2:])
 	case "pr":
 		cmdErr = client.CmdPR(os.Args[2:])
+	case "payment":
+		cmdErr = client.CmdPayment(os.Args[2:])
 	case "report", "dashboard":
 		cmdErr = client.CmdReport(os.Args[2:])
 	case "export":
@@ -252,6 +254,17 @@ Usage: erp-cli <command> [subcommand] [args...]
   %spr submit <name>%s                  Submit receipt
   %spr cancel <name>%s                  Cancel receipt
 
+%sPayments:%s
+  %spayment list [--party=X] [--type=receive|pay] [--status=X]%s
+                                      List payment entries
+  %spayment get <name>%s                Get payment details
+  %spayment receive <si_name> [--amount=X]%s
+                                      Create payment from Sales Invoice
+  %spayment pay <pi_name> [--amount=X]%s
+                                      Create payment for Purchase Invoice
+  %spayment submit <name>%s             Submit payment
+  %spayment cancel <name>%s             Cancel payment
+
 %sImport/Export:%s
   %sexport items -o <file>%s            Export items to CSV
   %sexport templates -o <file>%s        Export templates to CSV
@@ -320,6 +333,9 @@ Usage: erp-cli <command> [subcommand] [args...]
 		// Purchase Receipts
 		erp.Yellow, erp.Reset,
 		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,
+		// Payments
+		erp.Yellow, erp.Reset,
+		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,
 		// Import/Export
 		erp.Yellow, erp.Reset,
 		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,

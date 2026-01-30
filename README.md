@@ -1,6 +1,6 @@
 # ERPNext CLI
 
-A fast, interactive command-line interface for managing ERPNext: items, attributes, templates, stock, and more.
+A fast, interactive command-line interface for managing ERPNext: items, attributes, templates, stock, purchasing, and more.
 
 ## Features
 
@@ -10,6 +10,8 @@ A fast, interactive command-line interface for managing ERPNext: items, attribut
 - **Complete item management** - Items, attributes, templates, variants
 - **Stock operations** - Receive, transfer, issue with warehouse support
 - **Serial numbers** - Individual product tracking
+- **Purchasing workflow** - Suppliers, Purchase Orders, Purchase Invoices
+- **Reports & Dashboard** - Executive summary and detailed reports
 - **Batch operations** - CSV import/export
 
 ## Quick Start
@@ -19,7 +21,7 @@ A fast, interactive command-line interface for managing ERPNext: items, attribut
 ```bash
 git clone https://github.com/mikelcalvo/erpnext-cli.git
 cd erpnext-cli
-go build -o erp-cli .
+go build -o erp-cli ./cmd/erp-cli
 ```
 
 ### Configure
@@ -85,6 +87,34 @@ erp-cli stock issue "ITEM" 2 "Warehouse"
 erp-cli serial create "SN-001" "ITEM"
 erp-cli serial list "ITEM"
 erp-cli serial create-batch "ITEM" "SN-" 1 100
+
+# Suppliers
+erp-cli supplier list
+erp-cli supplier get "Intel Corporation"
+erp-cli supplier create "New Supplier" --group="Services"
+erp-cli supplier delete "Old Supplier"
+
+# Purchase Orders
+erp-cli po list
+erp-cli po list --supplier="Intel" --status=Draft
+erp-cli po get PUR-ORD-2025-00001
+erp-cli po create "Intel Corporation"
+erp-cli po add-item PUR-ORD-2025-00001 CPU-I7 10 --rate=450
+erp-cli po submit PUR-ORD-2025-00001
+erp-cli po cancel PUR-ORD-2025-00001
+
+# Purchase Invoices
+erp-cli pi list
+erp-cli pi list --supplier="Intel"
+erp-cli pi get ACC-PINV-2025-00001
+erp-cli pi create-from-po PUR-ORD-2025-00001
+erp-cli pi submit ACC-PINV-2025-00001
+erp-cli pi cancel ACC-PINV-2025-00001
+
+# Reports & Dashboard
+erp-cli report                  # Executive dashboard
+erp-cli report stock            # Detailed stock report
+erp-cli report purchases        # Detailed purchasing report
 
 # Import/Export
 erp-cli export templates -o templates.csv

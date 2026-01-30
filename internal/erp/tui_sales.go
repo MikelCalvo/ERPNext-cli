@@ -1336,19 +1336,7 @@ func (m Model) loadPayments() tea.Cmd {
 						typeIcon = "↑"
 					}
 
-					statusIcon := ""
-					switch status {
-					case "Draft":
-						statusIcon = "Draft"
-					case "Submitted":
-						statusIcon = "Submitted"
-					case "Cancelled":
-						statusIcon = "Cancelled"
-					default:
-						statusIcon = status
-					}
-
-					detail := fmt.Sprintf("%s %s | %s | %s", typeIcon, party, statusIcon, m.client.FormatCurrency(amount))
+					detail := fmt.Sprintf("%s %s | %s | %s", typeIcon, party, status, m.client.FormatCurrency(amount))
 					items = append(items, ListItem{name: name, details: detail})
 				}
 			}
@@ -1492,140 +1480,84 @@ func (m Model) submitCreatePayment() tea.Cmd {
 			}
 		}
 
-		if paymentType == "Receive" {
-			// Get the Sales Invoice
-			encoded := url.PathEscape(invoiceName)
-			result, err := m.client.Request("GET", "Sales%20Invoice/"+encoded, nil)
-			if err != nil {
-				return formSubmittedMsg{false, err.Error()}
+		// Determine invoice type based on payment type
+		isReceive := paymentType == "Receive"
+		invoiceDoctype := "Purchase%20Invoice"
+		invoiceLabel := "Purchase invoice"
+		partyType := "Supplier"
+		partyField := "supplier"
+		refDoctype := "Purchase Invoice"
+		if isReceive {
+			invoiceDoctype = "Sales%20Invoice"
+			invoiceLabel = "Sales invoice"
+			partyType = "Customer"
+			partyField = "customer"
+			refDoctype = "Sales Invoice"
+		}
+
+		// Get the invoice
+		encoded := url.PathEscape(invoiceName)
+		result, err := m.client.Request("GET", invoiceDoctype+"/"+encoded, nil)
+		if err != nil {
+			return formSubmittedMsg{false, err.Error()}
+		}
+
+		invoiceData, ok := result["data"].(map[string]interface{})
+		if !ok {
+			return formSubmittedMsg{false, invoiceLabel + " not found"}
+		}
+
+		docStatus, _ := invoiceData["docstatus"].(float64)
+		if docStatus != 1 {
+			return formSubmittedMsg{false, invoiceLabel + " must be submitted first"}
+		}
+
+		outstanding, _ := invoiceData["outstanding_amount"].(float64)
+		if outstanding <= 0 {
+			return formSubmittedMsg{false, invoiceLabel + " has no outstanding amount"}
+		}
+
+		paidAmount := outstanding
+		if amount > 0 {
+			if amount > outstanding {
+				return formSubmittedMsg{false, fmt.Sprintf("Amount exceeds outstanding balance of %s", m.client.FormatCurrency(outstanding))}
 			}
+			paidAmount = amount
+		}
 
-			siData, ok := result["data"].(map[string]interface{})
-			if !ok {
-				return formSubmittedMsg{false, "Sales invoice not found"}
-			}
+		party, _ := invoiceData[partyField].(string)
+		grandTotal, _ := invoiceData["grand_total"].(float64)
 
-			docStatus, _ := siData["docstatus"].(float64)
-			if docStatus != 1 {
-				return formSubmittedMsg{false, "Sales invoice must be submitted first"}
-			}
+		company, err := m.client.GetCompany()
+		if err != nil {
+			return formSubmittedMsg{false, err.Error()}
+		}
 
-			outstanding, _ := siData["outstanding_amount"].(float64)
-			if outstanding <= 0 {
-				return formSubmittedMsg{false, "Sales invoice has no outstanding amount"}
-			}
-
-			paidAmount := outstanding
-			if amount > 0 {
-				if amount > outstanding {
-					return formSubmittedMsg{false, fmt.Sprintf("Amount exceeds outstanding balance of %s", m.client.FormatCurrency(outstanding))}
-				}
-				paidAmount = amount
-			}
-
-			customer, _ := siData["customer"].(string)
-			grandTotal, _ := siData["grand_total"].(float64)
-
-			company, err := m.client.GetCompany()
-			if err != nil {
-				return formSubmittedMsg{false, err.Error()}
-			}
-
-			today := time.Now().Format("2006-01-02")
-
-			body := map[string]interface{}{
-				"payment_type": "Receive",
-				"party_type":   "Customer",
-				"party":        customer,
-				"paid_amount":  paidAmount,
-				"posting_date": today,
-				"company":      company,
-				"references": []map[string]interface{}{
-					{
-						"reference_doctype":  "Sales Invoice",
-						"reference_name":     invoiceName,
-						"total_amount":       grandTotal,
-						"outstanding_amount": outstanding,
-						"allocated_amount":   paidAmount,
-					},
+		body := map[string]interface{}{
+			"payment_type": paymentType,
+			"party_type":   partyType,
+			"party":        party,
+			"paid_amount":  paidAmount,
+			"posting_date": time.Now().Format("2006-01-02"),
+			"company":      company,
+			"references": []map[string]interface{}{
+				{
+					"reference_doctype":  refDoctype,
+					"reference_name":     invoiceName,
+					"total_amount":       grandTotal,
+					"outstanding_amount": outstanding,
+					"allocated_amount":   paidAmount,
 				},
-			}
+			},
+		}
 
-			result, err = m.client.Request("POST", "Payment%20Entry", body)
-			if err != nil {
-				return formSubmittedMsg{false, err.Error()}
-			}
+		result, err = m.client.Request("POST", "Payment%20Entry", body)
+		if err != nil {
+			return formSubmittedMsg{false, err.Error()}
+		}
 
-			if data, ok := result["data"].(map[string]interface{}); ok {
-				return formSubmittedMsg{true, fmt.Sprintf("Payment created: %s", data["name"])}
-			}
-		} else {
-			// Get the Purchase Invoice
-			encoded := url.PathEscape(invoiceName)
-			result, err := m.client.Request("GET", "Purchase%20Invoice/"+encoded, nil)
-			if err != nil {
-				return formSubmittedMsg{false, err.Error()}
-			}
-
-			piData, ok := result["data"].(map[string]interface{})
-			if !ok {
-				return formSubmittedMsg{false, "Purchase invoice not found"}
-			}
-
-			docStatus, _ := piData["docstatus"].(float64)
-			if docStatus != 1 {
-				return formSubmittedMsg{false, "Purchase invoice must be submitted first"}
-			}
-
-			outstanding, _ := piData["outstanding_amount"].(float64)
-			if outstanding <= 0 {
-				return formSubmittedMsg{false, "Purchase invoice has no outstanding amount"}
-			}
-
-			paidAmount := outstanding
-			if amount > 0 {
-				if amount > outstanding {
-					return formSubmittedMsg{false, fmt.Sprintf("Amount exceeds outstanding balance of %s", m.client.FormatCurrency(outstanding))}
-				}
-				paidAmount = amount
-			}
-
-			supplier, _ := piData["supplier"].(string)
-			grandTotal, _ := piData["grand_total"].(float64)
-
-			company, err := m.client.GetCompany()
-			if err != nil {
-				return formSubmittedMsg{false, err.Error()}
-			}
-
-			today := time.Now().Format("2006-01-02")
-
-			body := map[string]interface{}{
-				"payment_type": "Pay",
-				"party_type":   "Supplier",
-				"party":        supplier,
-				"paid_amount":  paidAmount,
-				"posting_date": today,
-				"company":      company,
-				"references": []map[string]interface{}{
-					{
-						"reference_doctype":  "Purchase Invoice",
-						"reference_name":     invoiceName,
-						"total_amount":       grandTotal,
-						"outstanding_amount": outstanding,
-						"allocated_amount":   paidAmount,
-					},
-				},
-			}
-
-			result, err = m.client.Request("POST", "Payment%20Entry", body)
-			if err != nil {
-				return formSubmittedMsg{false, err.Error()}
-			}
-
-			if data, ok := result["data"].(map[string]interface{}); ok {
-				return formSubmittedMsg{true, fmt.Sprintf("Payment created: %s", data["name"])}
-			}
+		if data, ok := result["data"].(map[string]interface{}); ok {
+			return formSubmittedMsg{true, fmt.Sprintf("Payment created: %s", data["name"])}
 		}
 
 		return formSubmittedMsg{false, "Failed to create payment"}

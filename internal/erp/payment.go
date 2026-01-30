@@ -4,33 +4,9 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
-
-// PaymentReference represents a reference to an invoice in a Payment Entry
-type PaymentReference struct {
-	ReferenceDoctype  string  `json:"reference_doctype"`
-	ReferenceName     string  `json:"reference_name"`
-	TotalAmount       float64 `json:"total_amount"`
-	OutstandingAmount float64 `json:"outstanding_amount"`
-	AllocatedAmount   float64 `json:"allocated_amount"`
-}
-
-// PaymentEntry represents an ERPNext Payment Entry
-type PaymentEntry struct {
-	Name            string             `json:"name,omitempty"`
-	PaymentType     string             `json:"payment_type"`
-	PartyType       string             `json:"party_type"`
-	Party           string             `json:"party"`
-	PaidAmount      float64            `json:"paid_amount"`
-	PaidFromAccount string             `json:"paid_from,omitempty"`
-	PaidToAccount   string             `json:"paid_to,omitempty"`
-	ModeOfPayment   string             `json:"mode_of_payment,omitempty"`
-	PostingDate     string             `json:"posting_date,omitempty"`
-	Status          string             `json:"status,omitempty"`
-	DocStatus       int                `json:"docstatus,omitempty"`
-	References      []PaymentReference `json:"references,omitempty"`
-}
 
 // CmdPayment handles Payment Entry commands
 func (c *Client) CmdPayment(args []string) error {
@@ -140,12 +116,7 @@ func (c *Client) paymentList(opts paymentListOptions) error {
 
 	endpoint := "Payment%20Entry?limit_page_length=0&fields=[\"name\",\"payment_type\",\"party_type\",\"party\",\"paid_amount\",\"posting_date\",\"status\",\"docstatus\"]&order_by=creation%20desc"
 	if len(filters) > 0 {
-		filterStr := "[" + filters[0]
-		for i := 1; i < len(filters); i++ {
-			filterStr += "," + filters[i]
-		}
-		filterStr += "]"
-		endpoint += "&filters=" + url.QueryEscape(filterStr)
+		endpoint += "&filters=" + url.QueryEscape("["+strings.Join(filters, ",")+"]")
 	}
 
 	result, err := c.Request("GET", endpoint, nil)
@@ -237,113 +208,52 @@ func (c *Client) paymentGet(name string) error {
 }
 
 func (c *Client) paymentReceive(siName string, amount float64) error {
-	fmt.Printf("%sCreating payment entry for Sales Invoice: %s%s\n", Blue, siName, Reset)
-
-	// Get the Sales Invoice
-	encoded := url.PathEscape(siName)
-	result, err := c.Request("GET", "Sales%20Invoice/"+encoded, nil)
-	if err != nil {
-		return err
-	}
-
-	siData, ok := result["data"].(map[string]interface{})
-	if !ok {
-		return fmt.Errorf("sales invoice not found")
-	}
-
-	// Check if submitted
-	docStatus, _ := siData["docstatus"].(float64)
-	if docStatus != 1 {
-		return fmt.Errorf("sales invoice must be submitted first")
-	}
-
-	// Check outstanding amount
-	outstanding, _ := siData["outstanding_amount"].(float64)
-	if outstanding <= 0 {
-		return fmt.Errorf("sales invoice has no outstanding amount")
-	}
-
-	// Use provided amount or outstanding amount
-	paidAmount := outstanding
-	if amount > 0 {
-		if amount > outstanding {
-			return fmt.Errorf("amount exceeds outstanding balance of %s", c.FormatCurrency(outstanding))
-		}
-		paidAmount = amount
-	}
-
-	customer, _ := siData["customer"].(string)
-	grandTotal, _ := siData["grand_total"].(float64)
-
-	company, err := c.GetCompany()
-	if err != nil {
-		return err
-	}
-
-	today := time.Now().Format("2006-01-02")
-
-	body := map[string]interface{}{
-		"payment_type": "Receive",
-		"party_type":   "Customer",
-		"party":        customer,
-		"paid_amount":  paidAmount,
-		"posting_date": today,
-		"company":      company,
-		"references": []map[string]interface{}{
-			{
-				"reference_doctype":  "Sales Invoice",
-				"reference_name":     siName,
-				"total_amount":       grandTotal,
-				"outstanding_amount": outstanding,
-				"allocated_amount":   paidAmount,
-			},
-		},
-	}
-
-	result, err = c.Request("POST", "Payment%20Entry", body)
-	if err != nil {
-		return err
-	}
-
-	if data, ok := result["data"].(map[string]interface{}); ok {
-		peName := data["name"]
-		fmt.Printf("%s✓ Payment Entry created: %s%s\n", Green, peName, Reset)
-		fmt.Printf("  Type: Receive (from Customer)\n")
-		fmt.Printf("  Customer: %s\n", customer)
-		fmt.Printf("  Amount: %s\n", c.FormatCurrency(paidAmount))
-		fmt.Printf("  For Invoice: %s\n", siName)
-		fmt.Printf("  Status: Draft\n")
-		fmt.Printf("  Use 'erp-cli payment submit %s' to submit\n", peName)
-	}
-
-	return nil
+	return c.createPaymentFromInvoice(siName, amount, "Receive")
 }
 
 func (c *Client) paymentPay(piName string, amount float64) error {
-	fmt.Printf("%sCreating payment entry for Purchase Invoice: %s%s\n", Blue, piName, Reset)
+	return c.createPaymentFromInvoice(piName, amount, "Pay")
+}
 
-	// Get the Purchase Invoice
-	encoded := url.PathEscape(piName)
-	result, err := c.Request("GET", "Purchase%20Invoice/"+encoded, nil)
+// createPaymentFromInvoice creates a payment entry from an invoice (Sales or Purchase)
+func (c *Client) createPaymentFromInvoice(invoiceName string, amount float64, paymentType string) error {
+	isReceive := paymentType == "Receive"
+
+	invoiceDoctype := "Purchase%20Invoice"
+	invoiceLabel := "Purchase Invoice"
+	partyType := "Supplier"
+	partyField := "supplier"
+	if isReceive {
+		invoiceDoctype = "Sales%20Invoice"
+		invoiceLabel = "Sales Invoice"
+		partyType = "Customer"
+		partyField = "customer"
+	}
+
+	fmt.Printf("%sCreating payment entry for %s: %s%s\n", Blue, invoiceLabel, invoiceName, Reset)
+
+	// Get the invoice
+	encoded := url.PathEscape(invoiceName)
+	result, err := c.Request("GET", invoiceDoctype+"/"+encoded, nil)
 	if err != nil {
 		return err
 	}
 
-	piData, ok := result["data"].(map[string]interface{})
+	invoiceData, ok := result["data"].(map[string]interface{})
 	if !ok {
-		return fmt.Errorf("purchase invoice not found")
+		return fmt.Errorf("%s not found", strings.ToLower(invoiceLabel))
 	}
 
 	// Check if submitted
-	docStatus, _ := piData["docstatus"].(float64)
+	docStatus, _ := invoiceData["docstatus"].(float64)
 	if docStatus != 1 {
-		return fmt.Errorf("purchase invoice must be submitted first")
+		return fmt.Errorf("%s must be submitted first", strings.ToLower(invoiceLabel))
 	}
 
 	// Check outstanding amount
-	outstanding, _ := piData["outstanding_amount"].(float64)
+	outstanding, _ := invoiceData["outstanding_amount"].(float64)
 	if outstanding <= 0 {
-		return fmt.Errorf("purchase invoice has no outstanding amount")
+		return fmt.Errorf("%s has no outstanding amount", strings.ToLower(invoiceLabel))
 	}
 
 	// Use provided amount or outstanding amount
@@ -355,27 +265,30 @@ func (c *Client) paymentPay(piName string, amount float64) error {
 		paidAmount = amount
 	}
 
-	supplier, _ := piData["supplier"].(string)
-	grandTotal, _ := piData["grand_total"].(float64)
+	party, _ := invoiceData[partyField].(string)
+	grandTotal, _ := invoiceData["grand_total"].(float64)
 
 	company, err := c.GetCompany()
 	if err != nil {
 		return err
 	}
 
-	today := time.Now().Format("2006-01-02")
+	refDoctype := "Purchase Invoice"
+	if isReceive {
+		refDoctype = "Sales Invoice"
+	}
 
 	body := map[string]interface{}{
-		"payment_type": "Pay",
-		"party_type":   "Supplier",
-		"party":        supplier,
+		"payment_type": paymentType,
+		"party_type":   partyType,
+		"party":        party,
 		"paid_amount":  paidAmount,
-		"posting_date": today,
+		"posting_date": time.Now().Format("2006-01-02"),
 		"company":      company,
 		"references": []map[string]interface{}{
 			{
-				"reference_doctype":  "Purchase Invoice",
-				"reference_name":     piName,
+				"reference_doctype":  refDoctype,
+				"reference_name":     invoiceName,
 				"total_amount":       grandTotal,
 				"outstanding_amount": outstanding,
 				"allocated_amount":   paidAmount,
@@ -390,11 +303,15 @@ func (c *Client) paymentPay(piName string, amount float64) error {
 
 	if data, ok := result["data"].(map[string]interface{}); ok {
 		peName := data["name"]
+		typeLabel := "Pay (to Supplier)"
+		if isReceive {
+			typeLabel = "Receive (from Customer)"
+		}
 		fmt.Printf("%s✓ Payment Entry created: %s%s\n", Green, peName, Reset)
-		fmt.Printf("  Type: Pay (to Supplier)\n")
-		fmt.Printf("  Supplier: %s\n", supplier)
+		fmt.Printf("  Type: %s\n", typeLabel)
+		fmt.Printf("  %s: %s\n", partyType, party)
 		fmt.Printf("  Amount: %s\n", c.FormatCurrency(paidAmount))
-		fmt.Printf("  For Invoice: %s\n", piName)
+		fmt.Printf("  For Invoice: %s\n", invoiceName)
 		fmt.Printf("  Status: Draft\n")
 		fmt.Printf("  Use 'erp-cli payment submit %s' to submit\n", peName)
 	}

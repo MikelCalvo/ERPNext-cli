@@ -180,8 +180,8 @@ func (c *Client) poList(opts poListOptions) error {
 				}
 
 				fmt.Printf("  %s - %s\n", name, supplier)
-				fmt.Printf("    Date: %s | Status: %s%s%s | Total: %.2f\n",
-					date, statusColor, status, Reset, total)
+				fmt.Printf("    Date: %s | Status: %s%s%s | Total: %s\n",
+					date, statusColor, status, Reset, c.FormatCurrency(total))
 			}
 		}
 	}
@@ -204,7 +204,8 @@ func (c *Client) poGet(name string) error {
 		fmt.Printf("  Supplier: %s\n", data["supplier"])
 		fmt.Printf("  Date: %s\n", data["transaction_date"])
 		fmt.Printf("  Status: %s\n", data["status"])
-		fmt.Printf("  Total: %.2f\n", data["grand_total"])
+		grandTotal, _ := data["grand_total"].(float64)
+		fmt.Printf("  Total: %s\n", c.FormatCurrency(grandTotal))
 
 		// Items
 		if items, ok := data["items"].([]interface{}); ok && len(items) > 0 {
@@ -215,7 +216,7 @@ func (c *Client) poGet(name string) error {
 					qty, _ := m["qty"].(float64)
 					rate, _ := m["rate"].(float64)
 					amount, _ := m["amount"].(float64)
-					fmt.Printf("    - %s: %.0f x %.2f = %.2f\n", itemCode, qty, rate, amount)
+					fmt.Printf("    - %s: %.0f x %s = %s\n", itemCode, qty, c.FormatCurrency(rate), c.FormatCurrency(amount))
 				}
 			}
 		}
@@ -297,7 +298,7 @@ func (c *Client) poAddItem(poName, itemCode string, qty, rate float64) error {
 	}
 	if rate > 0 {
 		newItem["rate"] = rate
-		fmt.Printf("  Rate: %.2f\n", rate)
+		fmt.Printf("  Rate: %s\n", c.FormatCurrency(rate))
 	}
 	existingItems = append(existingItems, newItem)
 
@@ -452,8 +453,8 @@ func (c *Client) piList(opts piListOptions) error {
 				}
 
 				fmt.Printf("  %s - %s\n", name, supplier)
-				fmt.Printf("    Date: %s | Status: %s%s%s | Total: %.2f\n",
-					date, statusColor, status, Reset, total)
+				fmt.Printf("    Date: %s | Status: %s%s%s | Total: %s\n",
+					date, statusColor, status, Reset, c.FormatCurrency(total))
 			}
 		}
 	}
@@ -476,7 +477,8 @@ func (c *Client) piGet(name string) error {
 		fmt.Printf("  Supplier: %s\n", data["supplier"])
 		fmt.Printf("  Date: %s\n", data["posting_date"])
 		fmt.Printf("  Status: %s\n", data["status"])
-		fmt.Printf("  Total: %.2f\n", data["grand_total"])
+		grandTotal, _ := data["grand_total"].(float64)
+		fmt.Printf("  Total: %s\n", c.FormatCurrency(grandTotal))
 
 		// Items
 		if items, ok := data["items"].([]interface{}); ok && len(items) > 0 {
@@ -492,7 +494,7 @@ func (c *Client) piGet(name string) error {
 					if po != nil && po != "" {
 						poStr = fmt.Sprintf(" (PO: %s)", po)
 					}
-					fmt.Printf("    - %s: %.0f x %.2f = %.2f%s\n", itemCode, qty, rate, amount, poStr)
+					fmt.Printf("    - %s: %.0f x %s = %s%s\n", itemCode, qty, c.FormatCurrency(rate), c.FormatCurrency(amount), poStr)
 				}
 			}
 		}

@@ -35,12 +35,19 @@ type Config struct {
 	Brand           string // CLI branding shown in TUI (default: "ERPNext CLI")
 }
 
+// CurrencyInfo holds currency details
+type CurrencyInfo struct {
+	Code   string // e.g., "EUR", "USD"
+	Symbol string // e.g., "€", "$"
+}
+
 // Client handles API requests
 type Client struct {
 	Config     *Config
 	HTTPClient *http.Client
 	ActiveURL  string
 	Mode       string // "vpn" or "internet"
+	Currency   *CurrencyInfo
 }
 
 // LoadConfig reads the .erp-config file
@@ -239,6 +246,89 @@ func (c *Client) CmdPing() error {
 	}
 
 	return fmt.Errorf("authentication failed: %s", string(body))
+}
+
+// Common currency symbols map
+var currencySymbols = map[string]string{
+	"USD": "$",
+	"EUR": "€",
+	"GBP": "£",
+	"JPY": "¥",
+	"CNY": "¥",
+	"INR": "₹",
+	"AUD": "A$",
+	"CAD": "C$",
+	"CHF": "CHF",
+	"MXN": "$",
+	"BRL": "R$",
+	"KRW": "₩",
+	"RUB": "₽",
+	"TRY": "₺",
+	"ZAR": "R",
+	"SEK": "kr",
+	"NOK": "kr",
+	"DKK": "kr",
+	"PLN": "zł",
+	"THB": "฿",
+	"SGD": "S$",
+	"HKD": "HK$",
+	"NZD": "NZ$",
+	"CLP": "$",
+	"COP": "$",
+	"ARS": "$",
+	"PEN": "S/",
+}
+
+// GetCurrency gets the default currency from the company
+func (c *Client) GetCurrency() (*CurrencyInfo, error) {
+	// Return cached currency if available
+	if c.Currency != nil {
+		return c.Currency, nil
+	}
+
+	// Get company name first
+	company, err := c.GetCompany()
+	if err != nil {
+		// Fallback to USD if we can't determine the company
+		c.Currency = &CurrencyInfo{Code: "USD", Symbol: "$"}
+		return c.Currency, nil
+	}
+
+	// Fetch company details to get default_currency
+	result, err := c.Request("GET", "Company/"+company+"?fields=[\"default_currency\"]", nil)
+	if err != nil {
+		c.Currency = &CurrencyInfo{Code: "USD", Symbol: "$"}
+		return c.Currency, nil
+	}
+
+	currencyCode := "USD"
+	if data, ok := result["data"].(map[string]interface{}); ok {
+		if currency, ok := data["default_currency"].(string); ok && currency != "" {
+			currencyCode = currency
+		}
+	}
+
+	// Get symbol from map or use code as fallback
+	symbol := currencyCode
+	if s, ok := currencySymbols[currencyCode]; ok {
+		symbol = s
+	}
+
+	c.Currency = &CurrencyInfo{
+		Code:   currencyCode,
+		Symbol: symbol,
+	}
+
+	return c.Currency, nil
+}
+
+// FormatCurrency formats an amount with the currency symbol
+func (c *Client) FormatCurrency(amount float64) string {
+	currency, _ := c.GetCurrency()
+	if currency == nil {
+		return fmt.Sprintf("$%.2f", amount)
+	}
+	return fmt.Sprintf("%s%.2f", currency.Symbol, amount)
 }
 
 // CmdConfig shows current configuration

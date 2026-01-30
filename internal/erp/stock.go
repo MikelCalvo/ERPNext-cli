@@ -192,7 +192,7 @@ func (c *Client) stockReceive(itemCode string, qty float64, warehouse string, ra
 
 	if rate > 0 {
 		item["basic_rate"] = rate
-		fmt.Printf("  Rate: %.2f\n", rate)
+		fmt.Printf("  Rate: %s\n", c.FormatCurrency(rate))
 	}
 
 	body := map[string]interface{}{

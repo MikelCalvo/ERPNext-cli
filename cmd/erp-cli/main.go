@@ -84,6 +84,18 @@ func main() {
 		cmdErr = client.CmdPO(os.Args[2:])
 	case "pi":
 		cmdErr = client.CmdPI(os.Args[2:])
+	case "customer":
+		cmdErr = client.CmdCustomer(os.Args[2:])
+	case "quotation":
+		cmdErr = client.CmdQuotation(os.Args[2:])
+	case "so":
+		cmdErr = client.CmdSO(os.Args[2:])
+	case "si":
+		cmdErr = client.CmdSI(os.Args[2:])
+	case "dn":
+		cmdErr = client.CmdDN(os.Args[2:])
+	case "pr":
+		cmdErr = client.CmdPR(os.Args[2:])
 	case "report", "dashboard":
 		cmdErr = client.CmdReport(os.Args[2:])
 	case "export":
@@ -189,6 +201,57 @@ Usage: erp-cli <command> [subcommand] [args...]
   %spi submit <name>%s                  Submit invoice
   %spi cancel <name>%s                  Cancel invoice
 
+%sCustomers:%s
+  %scustomer list%s                     List all customers
+  %scustomer get <name>%s               Get customer details
+  %scustomer create <name>%s            Create a new customer
+  %scustomer delete <name>%s            Delete a customer
+
+%sQuotations:%s
+  %squotation list [--customer=X] [--status=X]%s
+                                      List quotations
+  %squotation get <name>%s              Get quotation details
+  %squotation create <customer>%s       Create draft quotation
+  %squotation add-item <name> <item> <qty> [--rate=X]%s
+                                      Add item to quotation
+  %squotation submit <name>%s           Submit quotation
+  %squotation cancel <name>%s           Cancel quotation
+
+%sSales Orders:%s
+  %sso list [--customer=X] [--status=X]%s
+                                      List sales orders
+  %sso get <name>%s                     Get SO details with items
+  %sso create <customer>%s              Create draft SO
+  %sso create-from-quotation <name>%s   Create SO from quotation
+  %sso add-item <so> <item> <qty> [--rate=X]%s
+                                      Add item to SO
+  %sso submit <name>%s                  Submit SO
+  %sso cancel <name>%s                  Cancel SO
+
+%sSales Invoices:%s
+  %ssi list [--customer=X] [--status=X]%s
+                                      List sales invoices
+  %ssi get <name>%s                     Get invoice details
+  %ssi create-from-so <so_name>%s       Create invoice from SO
+  %ssi submit <name>%s                  Submit invoice
+  %ssi cancel <name>%s                  Cancel invoice
+
+%sDelivery Notes:%s
+  %sdn list [--customer=X] [--status=X]%s
+                                      List delivery notes
+  %sdn get <name>%s                     Get delivery note details
+  %sdn create-from-so <so_name>%s       Create delivery note from SO
+  %sdn submit <name>%s                  Submit delivery note
+  %sdn cancel <name>%s                  Cancel delivery note
+
+%sPurchase Receipts:%s
+  %spr list [--supplier=X] [--status=X]%s
+                                      List purchase receipts
+  %spr get <name>%s                     Get receipt details
+  %spr create-from-po <po_name>%s       Create receipt from PO
+  %spr submit <name>%s                  Submit receipt
+  %spr cancel <name>%s                  Cancel receipt
+
 %sImport/Export:%s
   %sexport items -o <file>%s            Export items to CSV
   %sexport templates -o <file>%s        Export templates to CSV
@@ -237,11 +300,34 @@ Usage: erp-cli <command> [subcommand] [args...]
 		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,
 		erp.Yellow, erp.Reset,
 		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,
+		// Customers
+		erp.Yellow, erp.Reset,
+		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,
+		// Quotations
+		erp.Yellow, erp.Reset,
+		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,
+		erp.Green, erp.Reset, erp.Green, erp.Reset,
+		// Sales Orders
+		erp.Yellow, erp.Reset,
+		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,
+		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,
+		// Sales Invoices
+		erp.Yellow, erp.Reset,
+		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,
+		// Delivery Notes
+		erp.Yellow, erp.Reset,
+		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,
+		// Purchase Receipts
+		erp.Yellow, erp.Reset,
+		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,
+		// Import/Export
 		erp.Yellow, erp.Reset,
 		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,
 		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,
+		// Reports
 		erp.Yellow, erp.Reset,
 		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,
+		// Examples
 		erp.Yellow, erp.Reset,
 	)
 }

@@ -63,6 +63,10 @@ This is a Go CLI application for managing ERPNext instances, featuring both comm
 | `import.go` | CSV import/export functionality |
 | `supplier.go` | Supplier management (CLI) |
 | `purchase.go` | Purchase Orders and Purchase Invoices (CLI) |
+| `customer.go` | Customer management (CLI) |
+| `sales.go` | Quotations, Sales Orders, Sales Invoices (CLI) |
+| `delivery.go` | Delivery Notes (CLI) |
+| `receipt.go` | Purchase Receipts (CLI) |
 | `report.go` | Dashboard and reports (CLI) |
 
 ### TUI Files in `internal/erp/`
@@ -72,7 +76,8 @@ This is a Go CLI application for managing ERPNext instances, featuring both comm
 | `tui.go` | Core TUI: Model, Views enum, menu, navigation, Update/View |
 | `tui_dashboard.go` | Dashboard view with metrics display |
 | `tui_stock.go` | Warehouses, Stock operations, Serial Numbers |
-| `tui_purchasing.go` | Suppliers, Purchase Orders, Purchase Invoices |
+| `tui_purchasing.go` | Suppliers, Purchase Orders, Purchase Invoices, Purchase Receipts |
+| `tui_sales.go` | Customers, Quotations, Sales Orders, Sales Invoices, Delivery Notes |
 | `tui_forms.go` | Reusable form components, confirmations, helpers |
 
 ### Command Pattern
@@ -115,9 +120,9 @@ Uses Charm's BubbleTea framework:
 - Async data loading via custom message types (`dataLoadedMsg`, `itemDetailMsg`, etc.)
 - Navigation: Esc to go back, q to quit from main menu
 - Forms: Tab to navigate fields, Enter to submit, Esc to cancel
-- Key shortcuts: n=new, d=delete, r=refresh/receive, t=transfer, i=issue, s=submit, x=cancel
+- Key shortcuts: n=new, d=delete, r=refresh/receive, t=transfer, i=issue/invoice, s=submit, x=cancel, o=create SO, q=from quotation
 
-**TUI Main Menu** (12 options):
+**TUI Main Menu** (18 options):
 1. Dashboard - Executive summary with KPIs
 2. Attributes - Item attributes CRUD
 3. Items - All items list
@@ -127,9 +132,15 @@ Uses Charm's BubbleTea framework:
 7. Warehouses - View warehouses
 8. Stock - Stock levels & operations (receive/transfer/issue)
 9. Serial Numbers - Serialized item tracking
-10. Suppliers - Supplier CRUD
-11. Purchase Orders - Full PO workflow
-12. Purchase Invoices - Invoice from PO workflow
+10. Customers - Customer CRUD
+11. Quotations - Sales quotations workflow
+12. Sales Orders - SO workflow (can create from quotation)
+13. Sales Invoices - Customer invoices from SO
+14. Delivery Notes - Shipments from SO
+15. Suppliers - Supplier CRUD
+16. Purchase Orders - Full PO workflow
+17. Purchase Invoices - Invoice from PO workflow
+18. Purchase Receipts - Goods received from PO
 
 ### Reports Module
 
@@ -155,7 +166,7 @@ Required fields: `ERP_URL`, `ERP_API_KEY`, `ERP_API_SECRET`
 Version constant is in `internal/erp/tui.go`:
 ```go
 const (
-    Version = "1.3.0"
+    Version = "1.5.0"
     Author  = "Mikel Calvo"
     Year    = "2025"
 )

@@ -88,6 +88,34 @@ func (m *Model) submitCurrentForm() tea.Cmd {
 	case ViewCreatePI:
 		m.prevView = ViewPurchaseInvoices
 		return m.submitCreatePI()
+	// Sales forms
+	case ViewCreateCustomer:
+		m.prevView = ViewCustomers
+		return m.submitCreateCustomer()
+	case ViewCreateQuotation:
+		m.prevView = ViewQuotations
+		return m.submitCreateQuotation()
+	case ViewAddQuotationItem:
+		m.prevView = ViewQuotationDetail
+		return m.submitAddQuotationItem()
+	case ViewCreateSO:
+		m.prevView = ViewSalesOrders
+		return m.submitCreateSO()
+	case ViewCreateSOFromQuotation:
+		m.prevView = ViewSalesOrders
+		return m.submitCreateSOFromQuotation()
+	case ViewAddSOItem:
+		m.prevView = ViewSODetail
+		return m.submitAddSOItem()
+	case ViewCreateSalesInvoice:
+		m.prevView = ViewSalesInvoices
+		return m.submitCreateSI()
+	case ViewCreateDN:
+		m.prevView = ViewDeliveryNotes
+		return m.submitCreateDN()
+	case ViewCreatePR:
+		m.prevView = ViewPurchaseReceipts
+		return m.submitCreatePR()
 	}
 
 	return nil
@@ -125,6 +153,29 @@ func (m *Model) handleConfirmAction(confirmed bool) tea.Cmd {
 		return m.submitPI(m.selectedItem)
 	case "cancel_pi":
 		return m.cancelPI(m.selectedItem)
+	// Sales actions
+	case "submit_quotation":
+		return m.submitQuotation(m.selectedItem)
+	case "cancel_quotation":
+		return m.cancelQuotation(m.selectedItem)
+	case "submit_so":
+		return m.submitSO(m.selectedItem)
+	case "cancel_so":
+		return m.cancelSO(m.selectedItem)
+	case "submit_si":
+		return m.submitSI(m.selectedItem)
+	case "cancel_si":
+		return m.cancelSI(m.selectedItem)
+	// Delivery Notes actions
+	case "submit_dn":
+		return m.submitDN(m.selectedItem)
+	case "cancel_dn":
+		return m.cancelDN(m.selectedItem)
+	// Purchase Receipts actions
+	case "submit_pr":
+		return m.submitPR(m.selectedItem)
+	case "cancel_pr":
+		return m.cancelPR(m.selectedItem)
 	}
 
 	return nil
@@ -147,6 +198,8 @@ func (m *Model) handleDeleteForView() tea.Cmd {
 		return m.deleteSupplier(m.selectedItem)
 	case ViewSerials:
 		return m.deleteSerial(m.selectedItem)
+	case ViewCustomers:
+		return m.deleteCustomer(m.selectedItem)
 	}
 	return nil
 }
@@ -176,6 +229,18 @@ func (m *Model) setListTitle() {
 		m.currentList.Title = "Purchase Orders"
 	case ViewPurchaseInvoices:
 		m.currentList.Title = "Purchase Invoices"
+	case ViewCustomers:
+		m.currentList.Title = "Customers"
+	case ViewQuotations:
+		m.currentList.Title = "Quotations"
+	case ViewSalesOrders:
+		m.currentList.Title = "Sales Orders"
+	case ViewSalesInvoices:
+		m.currentList.Title = "Sales Invoices"
+	case ViewDeliveryNotes:
+		m.currentList.Title = "Delivery Notes"
+	case ViewPurchaseReceipts:
+		m.currentList.Title = "Purchase Receipts"
 	}
 	m.currentList.Styles.Title = titleStyle
 }

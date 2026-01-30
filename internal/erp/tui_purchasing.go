@@ -700,6 +700,234 @@ func (m Model) cancelPI(name string) tea.Cmd {
 	}
 }
 
+// loadPurchaseReceipts fetches all purchase receipts
+func (m Model) loadPurchaseReceipts() tea.Cmd {
+	return func() tea.Msg {
+		result, err := m.client.Request("GET", "Purchase%20Receipt?limit_page_length=100&fields=[\"name\",\"supplier\",\"posting_date\",\"status\",\"grand_total\",\"docstatus\"]&order_by=creation%20desc", nil)
+		if err != nil {
+			return errorMsg{err}
+		}
+
+		var items []ListItem
+		if data, ok := result["data"].([]interface{}); ok {
+			for _, item := range data {
+				if im, ok := item.(map[string]interface{}); ok {
+					name := fmt.Sprintf("%v", im["name"])
+					supplier := fmt.Sprintf("%v", im["supplier"])
+					status, _ := im["status"].(string)
+					total, _ := im["grand_total"].(float64)
+
+					statusIcon := ""
+					switch status {
+					case "Draft":
+						statusIcon = "Draft"
+					case "To Bill":
+						statusIcon = "To Bill"
+					case "Completed":
+						statusIcon = "Completed"
+					case "Cancelled":
+						statusIcon = "Cancelled"
+					case "Return Issued":
+						statusIcon = "Return"
+					default:
+						statusIcon = status
+					}
+
+					detail := fmt.Sprintf("%s | %s | %s", supplier, statusIcon, m.client.FormatCurrency(total))
+					items = append(items, ListItem{name: name, details: detail})
+				}
+			}
+		}
+		return dataLoadedMsg{items}
+	}
+}
+
+// loadPRDetail fetches purchase receipt detail
+func (m Model) loadPRDetail(name string) tea.Cmd {
+	return func() tea.Msg {
+		encoded := url.PathEscape(name)
+		result, err := m.client.Request("GET", "Purchase%20Receipt/"+encoded, nil)
+		if err != nil {
+			return errorMsg{err}
+		}
+
+		if data, ok := result["data"].(map[string]interface{}); ok {
+			return itemDetailMsg{data}
+		}
+		return errorMsg{fmt.Errorf("no data found")}
+	}
+}
+
+// renderPRDetail renders the purchase receipt detail view
+func (m Model) renderPRDetail() string {
+	if m.loading {
+		return "\n  Loading..."
+	}
+
+	if m.itemData == nil {
+		return "\n  No data"
+	}
+
+	var b strings.Builder
+	b.WriteString(titleStyle.Render(" Purchase Receipt: "+m.selectedItem) + "\n\n")
+
+	b.WriteString(fmt.Sprintf("  Supplier: %v\n", m.itemData["supplier"]))
+	b.WriteString(fmt.Sprintf("  Date: %v\n", m.itemData["posting_date"]))
+
+	status, _ := m.itemData["status"].(string)
+	statusStyle := helpStyle
+	switch status {
+	case "Draft":
+		statusStyle = internetStyle
+	case "Completed":
+		statusStyle = successStyle
+	case "Cancelled", "Return Issued":
+		statusStyle = errorStyle
+	}
+	b.WriteString(fmt.Sprintf("  Status: %s\n", statusStyle.Render(status)))
+
+	grandTotal, _ := m.itemData["grand_total"].(float64)
+	b.WriteString(fmt.Sprintf("  Total: %s\n", m.client.FormatCurrency(grandTotal)))
+
+	if items, ok := m.itemData["items"].([]interface{}); ok && len(items) > 0 {
+		b.WriteString(fmt.Sprintf("\n  %s\n", selectedStyle.Render("Items:")))
+		for _, item := range items {
+			if im, ok := item.(map[string]interface{}); ok {
+				itemCode := fmt.Sprintf("%v", im["item_code"])
+				qty, _ := im["qty"].(float64)
+				rate, _ := im["rate"].(float64)
+				amount, _ := im["amount"].(float64)
+				po := im["purchase_order"]
+
+				line := fmt.Sprintf("    - %s: %.0f x %s = %s", itemCode, qty, m.client.FormatCurrency(rate), m.client.FormatCurrency(amount))
+				if po != nil && po != "" {
+					line += fmt.Sprintf(" (PO: %s)", po)
+				}
+				b.WriteString(line + "\n")
+			}
+		}
+	}
+
+	return boxStyle.Render(b.String())
+}
+
+// initCreatePRForm initializes the create PR from PO form
+func (m *Model) initCreatePRForm() {
+	m.inputs = make([]textinput.Model, 1)
+
+	m.inputs[0] = textinput.New()
+	m.inputs[0].Placeholder = "Purchase Order Name (e.g., PUR-ORD-2025-00001)"
+	m.inputs[0].Focus()
+
+	m.focusIndex = 0
+}
+
+// renderCreatePR renders the create PR form
+func (m Model) renderCreatePR() string {
+	var b strings.Builder
+	b.WriteString(titleStyle.Render(" Create Purchase Receipt from PO ") + "\n\n")
+
+	b.WriteString("  Purchase Order:\n")
+	b.WriteString(fmt.Sprintf("  %s\n\n", m.inputs[0].View()))
+
+	b.WriteString(helpStyle.Render("  Enter the name of a submitted Purchase Order"))
+
+	return boxStyle.Render(b.String())
+}
+
+// submitCreatePR submits the create PR form
+func (m Model) submitCreatePR() tea.Cmd {
+	return func() tea.Msg {
+		poName := m.inputs[0].Value()
+
+		if poName == "" {
+			return formSubmittedMsg{false, "Purchase Order name is required"}
+		}
+
+		encoded := url.PathEscape(poName)
+		result, err := m.client.Request("GET", "Purchase%20Order/"+encoded, nil)
+		if err != nil {
+			return formSubmittedMsg{false, err.Error()}
+		}
+
+		poData, ok := result["data"].(map[string]interface{})
+		if !ok {
+			return formSubmittedMsg{false, "Purchase order not found"}
+		}
+
+		docStatus, _ := poData["docstatus"].(float64)
+		if docStatus != 1 {
+			return formSubmittedMsg{false, "Purchase order must be submitted first"}
+		}
+
+		company, err := m.client.GetCompany()
+		if err != nil {
+			return formSubmittedMsg{false, err.Error()}
+		}
+
+		today := time.Now().Format("2006-01-02")
+
+		var prItems []map[string]interface{}
+		if items, ok := poData["items"].([]interface{}); ok {
+			for _, item := range items {
+				if im, ok := item.(map[string]interface{}); ok {
+					prItems = append(prItems, map[string]interface{}{
+						"item_code":           im["item_code"],
+						"qty":                 im["qty"],
+						"rate":                im["rate"],
+						"purchase_order":      poName,
+						"purchase_order_item": im["name"],
+					})
+				}
+			}
+		}
+
+		if len(prItems) == 0 {
+			return formSubmittedMsg{false, "No items found in purchase order"}
+		}
+
+		body := map[string]interface{}{
+			"supplier":     poData["supplier"],
+			"posting_date": today,
+			"company":      company,
+			"items":        prItems,
+		}
+
+		result, err = m.client.Request("POST", "Purchase%20Receipt", body)
+		if err != nil {
+			return formSubmittedMsg{false, err.Error()}
+		}
+
+		if data, ok := result["data"].(map[string]interface{}); ok {
+			return formSubmittedMsg{true, fmt.Sprintf("Purchase Receipt created: %s", data["name"])}
+		}
+
+		return formSubmittedMsg{false, "Failed to create purchase receipt"}
+	}
+}
+
+// submitPR submits a purchase receipt
+func (m Model) submitPR(name string) tea.Cmd {
+	return func() tea.Msg {
+		err := m.client.submitDocument("Purchase Receipt", name)
+		if err != nil {
+			return formSubmittedMsg{false, err.Error()}
+		}
+		return formSubmittedMsg{true, fmt.Sprintf("Purchase Receipt submitted: %s", name)}
+	}
+}
+
+// cancelPR cancels a purchase receipt
+func (m Model) cancelPR(name string) tea.Cmd {
+	return func() tea.Msg {
+		err := m.client.cancelDocument("Purchase Receipt", name)
+		if err != nil {
+			return formSubmittedMsg{false, err.Error()}
+		}
+		return formSubmittedMsg{true, fmt.Sprintf("Purchase Receipt cancelled: %s", name)}
+	}
+}
+
 // handlePurchasingKeys handles keyboard shortcuts for purchasing views
 func (m *Model) handlePurchasingKeys(key string) (tea.Model, tea.Cmd) {
 	switch m.view {
@@ -754,6 +982,50 @@ func (m *Model) handlePurchasingKeys(key string) (tea.Model, tea.Cmd) {
 				if docStatus, ok := m.itemData["docstatus"].(float64); ok && docStatus == 1 {
 					m.confirmAction = "cancel_po"
 					m.confirmMsg = fmt.Sprintf("Cancel PO %s?", m.selectedItem)
+					m.prevView = m.view
+					m.view = ViewConfirmAction
+					return m, nil
+				}
+			}
+		case "r":
+			// Create Purchase Receipt
+			if m.itemData != nil {
+				if docStatus, ok := m.itemData["docstatus"].(float64); ok && docStatus == 1 {
+					m.initCreatePRForm()
+					m.inputs[0].SetValue(m.selectedItem)
+					m.view = ViewCreatePR
+					return m, nil
+				}
+			}
+		}
+
+	case ViewPurchaseReceipts:
+		switch key {
+		case "n":
+			m.initCreatePRForm()
+			m.view = ViewCreatePR
+			return m, nil
+		}
+
+	case ViewPRDetail:
+		switch key {
+		case "s":
+			// Submit
+			if m.itemData != nil {
+				if docStatus, ok := m.itemData["docstatus"].(float64); ok && docStatus == 0 {
+					m.confirmAction = "submit_pr"
+					m.confirmMsg = fmt.Sprintf("Submit Purchase Receipt %s?", m.selectedItem)
+					m.prevView = m.view
+					m.view = ViewConfirmAction
+					return m, nil
+				}
+			}
+		case "x":
+			// Cancel
+			if m.itemData != nil {
+				if docStatus, ok := m.itemData["docstatus"].(float64); ok && docStatus == 1 {
+					m.confirmAction = "cancel_pr"
+					m.confirmMsg = fmt.Sprintf("Cancel Purchase Receipt %s?", m.selectedItem)
 					m.prevView = m.view
 					m.view = ViewConfirmAction
 					return m, nil

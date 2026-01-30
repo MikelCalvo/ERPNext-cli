@@ -19,7 +19,7 @@ func (m Model) loadDashboard() tea.Cmd {
 		var mu sync.Mutex
 		data := &ReportData{}
 
-		wg.Add(3)
+		wg.Add(5)
 		go func() {
 			defer wg.Done()
 			m.client.fetchStockMetrics(data, &mu)
@@ -32,20 +32,52 @@ func (m Model) loadDashboard() tea.Cmd {
 			defer wg.Done()
 			m.client.fetchSystemMetrics(data, &mu)
 		}()
+		go func() {
+			defer wg.Done()
+			m.client.fetchSalesMetrics(data, &mu)
+		}()
+		go func() {
+			defer wg.Done()
+			m.client.fetchPaymentMetrics(data, &mu)
+		}()
 		wg.Wait()
 
 		return dashboardLoadedMsg{data}
 	}
 }
 
-// renderDashboard renders the dashboard view
+// renderDashboard renders the dashboard view with scrollable viewport
 func (m Model) renderDashboard() string {
 	if m.loading {
-		return "\n  Loading dashboard..."
+		return fmt.Sprintf("\n  %s Loading dashboard...", m.spinner.View())
 	}
 
 	if m.dashboardData == nil {
 		return "\n  No data available"
+	}
+
+	if !m.viewportReady {
+		return "\n  Initializing..."
+	}
+
+	// Show viewport with scroll indicator
+	var b strings.Builder
+	b.WriteString(m.viewport.View())
+	b.WriteString("\n")
+
+	// Scroll indicator
+	scrollPercent := m.viewport.ScrollPercent() * 100
+	if m.viewport.TotalLineCount() > m.viewport.VisibleLineCount() {
+		b.WriteString(helpStyle.Render(fmt.Sprintf("  ↑↓ scroll • %.0f%% ", scrollPercent)))
+	}
+
+	return b.String()
+}
+
+// renderDashboardContent returns the dashboard content for the viewport
+func (m Model) renderDashboardContent() string {
+	if m.dashboardData == nil {
+		return "No data available"
 	}
 
 	data := m.dashboardData
@@ -58,12 +90,22 @@ func (m Model) renderDashboard() string {
 	// Stock Section
 	stockBox := m.renderDashboardStock(data)
 	b.WriteString(stockBox)
-	b.WriteString("\n\n")
+	b.WriteString("\n")
+
+	// Sales Section
+	salesBox := m.renderDashboardSales(data)
+	b.WriteString(salesBox)
+	b.WriteString("\n")
 
 	// Purchasing Section
 	purchaseBox := m.renderDashboardPurchases(data)
 	b.WriteString(purchaseBox)
-	b.WriteString("\n\n")
+	b.WriteString("\n")
+
+	// Payments Section
+	paymentsBox := m.renderDashboardPayments(data)
+	b.WriteString(paymentsBox)
+	b.WriteString("\n")
 
 	// System Section
 	systemBox := m.renderDashboardSystem(data)
@@ -91,7 +133,7 @@ func (m Model) renderDashboard() string {
 		}
 	}
 
-	return boxStyle.Render(b.String())
+	return b.String()
 }
 
 func (m Model) renderDashboardStock(data *ReportData) string {
@@ -118,6 +160,7 @@ func (m Model) renderDashboardPurchases(data *ReportData) string {
 
 	b.WriteString(fmt.Sprintf("  Draft POs:          %d (%s)\n", data.DraftPOs, m.client.FormatCurrency(data.DraftPOValue)))
 	b.WriteString(fmt.Sprintf("  Pending POs:        %d (%s)\n", data.PendingPOs, m.client.FormatCurrency(data.PendingPOValue)))
+	b.WriteString(fmt.Sprintf("  Completed POs:      %s\n", successStyle.Render(fmt.Sprintf("%d (%s)", data.CompletedPOs, m.client.FormatCurrency(data.CompletedPOValue)))))
 
 	if data.UnpaidInvoices > 0 {
 		b.WriteString(fmt.Sprintf("  Unpaid Invoices:    %s\n", errorStyle.Render(fmt.Sprintf("%d (%s)", data.UnpaidInvoices, m.client.FormatCurrency(data.UnpaidValue)))))
@@ -139,12 +182,51 @@ func (m Model) renderDashboardPurchases(data *ReportData) string {
 	return b.String()
 }
 
+func (m Model) renderDashboardSales(data *ReportData) string {
+	var b strings.Builder
+	b.WriteString(selectedStyle.Render("SALES"))
+	b.WriteString("\n\n")
+
+	b.WriteString(fmt.Sprintf("  Open Quotations:    %d\n", data.OpenQuotations))
+	b.WriteString(fmt.Sprintf("  Pending SOs:        %d\n", data.PendingSOs))
+	b.WriteString(fmt.Sprintf("  Completed SOs:      %s\n", successStyle.Render(fmt.Sprintf("%d (%s)", data.CompletedSOs, m.client.FormatCurrency(data.CompletedSOValue)))))
+
+	if data.UnpaidSIs > 0 {
+		b.WriteString(fmt.Sprintf("  Unpaid Invoices:    %s\n", errorStyle.Render(fmt.Sprintf("%d (%s)", data.UnpaidSIs, m.client.FormatCurrency(data.UnpaidSIValue)))))
+	} else {
+		b.WriteString(fmt.Sprintf("  Unpaid Invoices:    %d\n", data.UnpaidSIs))
+	}
+
+	return b.String()
+}
+
+func (m Model) renderDashboardPayments(data *ReportData) string {
+	var b strings.Builder
+	b.WriteString(selectedStyle.Render("PAYMENTS"))
+	b.WriteString("\n\n")
+
+	if data.TotalReceivables > 0 {
+		b.WriteString(fmt.Sprintf("  Receivables:        %s\n", successStyle.Render(m.client.FormatCurrency(data.TotalReceivables))))
+	} else {
+		b.WriteString(fmt.Sprintf("  Receivables:        %s\n", m.client.FormatCurrency(0)))
+	}
+
+	if data.TotalPayables > 0 {
+		b.WriteString(fmt.Sprintf("  Payables:           %s\n", errorStyle.Render(m.client.FormatCurrency(data.TotalPayables))))
+	} else {
+		b.WriteString(fmt.Sprintf("  Payables:           %s\n", m.client.FormatCurrency(0)))
+	}
+
+	return b.String()
+}
+
 func (m Model) renderDashboardSystem(data *ReportData) string {
 	var b strings.Builder
 	b.WriteString(selectedStyle.Render("SYSTEM"))
 	b.WriteString("\n\n")
 
 	b.WriteString(fmt.Sprintf("  Suppliers:    %d\n", data.TotalSuppliers))
+	b.WriteString(fmt.Sprintf("  Customers:    %d\n", data.TotalCustomers))
 	b.WriteString(fmt.Sprintf("  Warehouses:   %d\n", data.TotalWarehouses))
 	b.WriteString(fmt.Sprintf("  Item Groups:  %d\n", data.TotalGroups))
 

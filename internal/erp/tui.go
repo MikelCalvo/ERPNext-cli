@@ -12,7 +12,7 @@ import (
 
 // Version info
 const (
-	Version = "1.5.0"
+	Version = "1.6.0"
 	Author  = "Mikel Calvo"
 	Year    = "2025"
 )
@@ -125,6 +125,10 @@ const (
 	ViewPurchaseReceipts
 	ViewPRDetail
 	ViewCreatePR
+	// Payment Entry views
+	ViewPayments
+	ViewPaymentDetail
+	ViewCreatePayment
 )
 
 // MenuItem for the main menu
@@ -229,6 +233,7 @@ func NewTUI(client *Client) Model {
 		MenuItem{"Purchase Orders", "PO workflow", ViewPurchaseOrders},
 		MenuItem{"Purchase Invoices", "Invoice management", ViewPurchaseInvoices},
 		MenuItem{"Purchase Receipts", "Goods received from PO", ViewPurchaseReceipts},
+		MenuItem{"Payments", "Receive/Pay invoices", ViewPayments},
 	}
 
 	delegate := list.NewDefaultDelegate()
@@ -474,12 +479,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.view = ViewDeliveryNotes
 			case ViewPRDetail:
 				m.view = ViewPurchaseReceipts
+			case ViewPaymentDetail:
+				m.view = ViewPayments
 			case ViewCreateSupplier, ViewCreateSerial, ViewStockReceive,
 				ViewStockTransfer, ViewStockIssue, ViewCreatePO,
 				ViewAddPOItem, ViewCreatePI, ViewCreatePR,
 				ViewCreateCustomer, ViewCreateQuotation, ViewAddQuotationItem,
 				ViewCreateSO, ViewCreateSOFromQuotation, ViewAddSOItem, ViewCreateSalesInvoice,
-				ViewCreateDN:
+				ViewCreateDN, ViewCreatePayment:
 				// Form views go back to their parent
 				if m.prevView != 0 {
 					m.view = m.prevView
@@ -699,13 +706,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ViewAttributes, ViewItems, ViewTemplates, ViewGroups, ViewBrands,
 		ViewWarehouses, ViewStock, ViewSerials, ViewSuppliers,
 		ViewPurchaseOrders, ViewPurchaseInvoices, ViewPurchaseReceipts,
-		ViewCustomers, ViewQuotations, ViewSalesOrders, ViewSalesInvoices, ViewDeliveryNotes:
+		ViewCustomers, ViewQuotations, ViewSalesOrders, ViewSalesInvoices, ViewDeliveryNotes,
+		ViewPayments:
 		m.currentList, cmd = m.currentList.Update(msg)
 	case ViewCreateSupplier, ViewCreateSerial, ViewStockReceive, ViewStockTransfer, ViewStockIssue,
 		ViewCreatePO, ViewAddPOItem, ViewCreatePI, ViewCreatePR,
 		ViewCreateCustomer, ViewCreateQuotation, ViewAddQuotationItem,
 		ViewCreateSO, ViewCreateSOFromQuotation, ViewAddSOItem, ViewCreateSalesInvoice,
-		ViewCreateDN:
+		ViewCreateDN, ViewCreatePayment:
 		cmd = m.updateFormInputs(msg)
 	}
 
@@ -756,6 +764,8 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 				return m, m.loadDeliveryNotes()
 			case ViewPurchaseReceipts:
 				return m, m.loadPurchaseReceipts()
+			case ViewPayments:
+				return m, m.loadPayments()
 			}
 		}
 
@@ -863,6 +873,14 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 			m.loading = true
 			return m, m.loadPRDetail(item.name)
 		}
+
+	case ViewPayments:
+		if item, ok := m.currentList.SelectedItem().(ListItem); ok {
+			m.selectedItem = item.name
+			m.view = ViewPaymentDetail
+			m.loading = true
+			return m, m.loadPaymentDetail(item.name)
+		}
 	}
 
 	return m, nil
@@ -907,6 +925,8 @@ func (m Model) refreshCurrentView() (tea.Model, tea.Cmd) {
 		return m, m.loadDeliveryNotes()
 	case ViewPurchaseReceipts:
 		return m, m.loadPurchaseReceipts()
+	case ViewPayments:
+		return m, m.loadPayments()
 	}
 	return m, nil
 }
@@ -924,7 +944,8 @@ func (m Model) View() string {
 	case ViewAttributes, ViewItems, ViewTemplates, ViewGroups, ViewBrands,
 		ViewWarehouses, ViewStock, ViewSerials, ViewSuppliers,
 		ViewPurchaseOrders, ViewPurchaseInvoices, ViewPurchaseReceipts,
-		ViewCustomers, ViewQuotations, ViewSalesOrders, ViewSalesInvoices, ViewDeliveryNotes:
+		ViewCustomers, ViewQuotations, ViewSalesOrders, ViewSalesInvoices, ViewDeliveryNotes,
+		ViewPayments:
 		if m.loading {
 			content = "\n  Loading..."
 		} else {
@@ -997,6 +1018,11 @@ func (m Model) View() string {
 		content = m.renderPRDetail()
 	case ViewCreatePR:
 		content = m.renderCreatePR()
+	// Payment Entry views
+	case ViewPaymentDetail:
+		content = m.renderPaymentDetail()
+	case ViewCreatePayment:
+		content = m.renderCreatePayment()
 	}
 
 	var b strings.Builder
@@ -1067,7 +1093,7 @@ func (m Model) renderHelp() string {
 	case ViewSerialDetail, ViewSupplierDetail:
 		help = "esc: back • d: delete"
 	case ViewPIDetail:
-		help = "esc: back • s: submit • x: cancel"
+		help = "esc: back • s: submit • x: cancel • p: create payment"
 	// Sales views
 	case ViewCustomers:
 		help = "↑/↓: navigate • enter: detail • n: new • d: delete • /: search • esc: back"
@@ -1084,7 +1110,7 @@ func (m Model) renderHelp() string {
 	case ViewSODetail:
 		help = "esc: back • a: add item • s: submit • x: cancel • i: create invoice • r: create DN"
 	case ViewSIDetail:
-		help = "esc: back • s: submit • x: cancel"
+		help = "esc: back • s: submit • x: cancel • p: create payment"
 	case ViewDeliveryNotes:
 		help = "↑/↓: navigate • enter: detail • n: new from SO • /: search • esc: back"
 	case ViewDNDetail:
@@ -1092,6 +1118,10 @@ func (m Model) renderHelp() string {
 	case ViewPurchaseReceipts:
 		help = "↑/↓: navigate • enter: detail • n: new from PO • /: search • esc: back"
 	case ViewPRDetail:
+		help = "esc: back • s: submit • x: cancel"
+	case ViewPayments:
+		help = "↑/↓: navigate • enter: detail • /: search • esc: back"
+	case ViewPaymentDetail:
 		help = "esc: back • s: submit • x: cancel"
 	case ViewPODetail:
 		help = "esc: back • a: add item • s: submit • x: cancel PO • r: create PR"
@@ -1103,7 +1133,7 @@ func (m Model) renderHelp() string {
 		ViewStockIssue, ViewCreatePO, ViewAddPOItem, ViewCreatePI, ViewCreatePR,
 		ViewCreateCustomer, ViewCreateQuotation, ViewAddQuotationItem,
 		ViewCreateSO, ViewCreateSOFromQuotation, ViewAddSOItem, ViewCreateSalesInvoice,
-		ViewCreateDN:
+		ViewCreateDN, ViewCreatePayment:
 		help = "tab: next field • enter: submit • esc: cancel"
 	}
 	return helpStyle.Render(help)

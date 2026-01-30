@@ -1065,6 +1065,18 @@ func (m *Model) handlePurchasingKeys(key string) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 			}
+		case "p":
+			// Create payment for submitted invoice with outstanding amount
+			if m.itemData != nil {
+				if docStatus, ok := m.itemData["docstatus"].(float64); ok && docStatus == 1 {
+					if outstanding, ok := m.itemData["outstanding_amount"].(float64); ok && outstanding > 0 {
+						m.initCreatePaymentForm(m.selectedItem, "Pay")
+						m.prevView = m.view
+						m.view = ViewCreatePayment
+						return m, nil
+					}
+				}
+			}
 		}
 	}
 

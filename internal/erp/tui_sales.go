@@ -1313,6 +1313,347 @@ func (m Model) cancelDN(name string) tea.Cmd {
 	}
 }
 
+// loadPayments fetches all payment entries
+func (m Model) loadPayments() tea.Cmd {
+	return func() tea.Msg {
+		result, err := m.client.Request("GET", "Payment%20Entry?limit_page_length=100&fields=[\"name\",\"payment_type\",\"party_type\",\"party\",\"paid_amount\",\"posting_date\",\"status\",\"docstatus\"]&order_by=creation%20desc", nil)
+		if err != nil {
+			return errorMsg{err}
+		}
+
+		var items []ListItem
+		if data, ok := result["data"].([]interface{}); ok {
+			for _, item := range data {
+				if im, ok := item.(map[string]interface{}); ok {
+					name := fmt.Sprintf("%v", im["name"])
+					paymentType, _ := im["payment_type"].(string)
+					party := fmt.Sprintf("%v", im["party"])
+					status, _ := im["status"].(string)
+					amount, _ := im["paid_amount"].(float64)
+
+					typeIcon := "↓"
+					if paymentType == "Pay" {
+						typeIcon = "↑"
+					}
+
+					statusIcon := ""
+					switch status {
+					case "Draft":
+						statusIcon = "Draft"
+					case "Submitted":
+						statusIcon = "Submitted"
+					case "Cancelled":
+						statusIcon = "Cancelled"
+					default:
+						statusIcon = status
+					}
+
+					detail := fmt.Sprintf("%s %s | %s | %s", typeIcon, party, statusIcon, m.client.FormatCurrency(amount))
+					items = append(items, ListItem{name: name, details: detail})
+				}
+			}
+		}
+		return dataLoadedMsg{items}
+	}
+}
+
+// loadPaymentDetail fetches payment entry detail
+func (m Model) loadPaymentDetail(name string) tea.Cmd {
+	return func() tea.Msg {
+		encoded := url.PathEscape(name)
+		result, err := m.client.Request("GET", "Payment%20Entry/"+encoded, nil)
+		if err != nil {
+			return errorMsg{err}
+		}
+
+		if data, ok := result["data"].(map[string]interface{}); ok {
+			return itemDetailMsg{data}
+		}
+		return errorMsg{fmt.Errorf("no data found")}
+	}
+}
+
+// renderPaymentDetail renders the payment entry detail view
+func (m Model) renderPaymentDetail() string {
+	if m.loading {
+		return "\n  Loading..."
+	}
+
+	if m.itemData == nil {
+		return "\n  No data"
+	}
+
+	var b strings.Builder
+	b.WriteString(titleStyle.Render(" Payment Entry: "+m.selectedItem) + "\n\n")
+
+	paymentType, _ := m.itemData["payment_type"].(string)
+	typeStr := "Receive (from Customer)"
+	if paymentType == "Pay" {
+		typeStr = "Pay (to Supplier)"
+	}
+	b.WriteString(fmt.Sprintf("  Type: %s\n", typeStr))
+	b.WriteString(fmt.Sprintf("  Party Type: %v\n", m.itemData["party_type"]))
+	b.WriteString(fmt.Sprintf("  Party: %v\n", m.itemData["party"]))
+	b.WriteString(fmt.Sprintf("  Date: %v\n", m.itemData["posting_date"]))
+
+	status, _ := m.itemData["status"].(string)
+	statusStyle := helpStyle
+	switch status {
+	case "Draft":
+		statusStyle = internetStyle
+	case "Submitted":
+		statusStyle = successStyle
+	case "Cancelled":
+		statusStyle = errorStyle
+	}
+	b.WriteString(fmt.Sprintf("  Status: %s\n", statusStyle.Render(status)))
+
+	paidAmount, _ := m.itemData["paid_amount"].(float64)
+	b.WriteString(fmt.Sprintf("  Paid Amount: %s\n", m.client.FormatCurrency(paidAmount)))
+
+	if mop, ok := m.itemData["mode_of_payment"]; ok && mop != nil && mop != "" {
+		b.WriteString(fmt.Sprintf("  Mode of Payment: %v\n", mop))
+	}
+
+	if refs, ok := m.itemData["references"].([]interface{}); ok && len(refs) > 0 {
+		b.WriteString(fmt.Sprintf("\n  %s\n", selectedStyle.Render("References:")))
+		for _, ref := range refs {
+			if r, ok := ref.(map[string]interface{}); ok {
+				refDoctype := r["reference_doctype"]
+				refName := r["reference_name"]
+				allocated, _ := r["allocated_amount"].(float64)
+				b.WriteString(fmt.Sprintf("    - %s: %s (Allocated: %s)\n", refDoctype, refName, m.client.FormatCurrency(allocated)))
+			}
+		}
+	}
+
+	return boxStyle.Render(b.String())
+}
+
+// initCreatePaymentForm initializes the create payment form
+func (m *Model) initCreatePaymentForm(invoiceName string, paymentType string) {
+	m.inputs = make([]textinput.Model, 2)
+
+	m.inputs[0] = textinput.New()
+	if paymentType == "Receive" {
+		m.inputs[0].Placeholder = "Sales Invoice Name"
+	} else {
+		m.inputs[0].Placeholder = "Purchase Invoice Name"
+	}
+	m.inputs[0].SetValue(invoiceName)
+	m.inputs[0].Focus()
+
+	m.inputs[1] = textinput.New()
+	m.inputs[1].Placeholder = "Amount (leave empty for full amount)"
+
+	m.focusIndex = 0
+	m.formData["payment_type"] = paymentType
+}
+
+// renderCreatePayment renders the create payment form
+func (m Model) renderCreatePayment() string {
+	var b strings.Builder
+
+	paymentType := m.formData["payment_type"]
+	if paymentType == "Receive" {
+		b.WriteString(titleStyle.Render(" Create Payment (Receive) ") + "\n\n")
+		b.WriteString("  Sales Invoice:\n")
+	} else {
+		b.WriteString(titleStyle.Render(" Create Payment (Pay) ") + "\n\n")
+		b.WriteString("  Purchase Invoice:\n")
+	}
+	b.WriteString(fmt.Sprintf("  %s\n\n", m.inputs[0].View()))
+
+	b.WriteString("  Amount (optional):\n")
+	b.WriteString(fmt.Sprintf("  %s\n\n", m.inputs[1].View()))
+
+	b.WriteString(helpStyle.Render("  Leave amount empty to pay the full outstanding balance"))
+
+	return boxStyle.Render(b.String())
+}
+
+// submitCreatePayment submits the create payment form
+func (m Model) submitCreatePayment() tea.Cmd {
+	return func() tea.Msg {
+		invoiceName := m.inputs[0].Value()
+		amountStr := m.inputs[1].Value()
+		paymentType := m.formData["payment_type"]
+
+		if invoiceName == "" {
+			return formSubmittedMsg{false, "Invoice name is required"}
+		}
+
+		amount := 0.0
+		if amountStr != "" {
+			var err error
+			amount, err = strconv.ParseFloat(amountStr, 64)
+			if err != nil {
+				return formSubmittedMsg{false, "Invalid amount"}
+			}
+		}
+
+		if paymentType == "Receive" {
+			// Get the Sales Invoice
+			encoded := url.PathEscape(invoiceName)
+			result, err := m.client.Request("GET", "Sales%20Invoice/"+encoded, nil)
+			if err != nil {
+				return formSubmittedMsg{false, err.Error()}
+			}
+
+			siData, ok := result["data"].(map[string]interface{})
+			if !ok {
+				return formSubmittedMsg{false, "Sales invoice not found"}
+			}
+
+			docStatus, _ := siData["docstatus"].(float64)
+			if docStatus != 1 {
+				return formSubmittedMsg{false, "Sales invoice must be submitted first"}
+			}
+
+			outstanding, _ := siData["outstanding_amount"].(float64)
+			if outstanding <= 0 {
+				return formSubmittedMsg{false, "Sales invoice has no outstanding amount"}
+			}
+
+			paidAmount := outstanding
+			if amount > 0 {
+				if amount > outstanding {
+					return formSubmittedMsg{false, fmt.Sprintf("Amount exceeds outstanding balance of %s", m.client.FormatCurrency(outstanding))}
+				}
+				paidAmount = amount
+			}
+
+			customer, _ := siData["customer"].(string)
+			grandTotal, _ := siData["grand_total"].(float64)
+
+			company, err := m.client.GetCompany()
+			if err != nil {
+				return formSubmittedMsg{false, err.Error()}
+			}
+
+			today := time.Now().Format("2006-01-02")
+
+			body := map[string]interface{}{
+				"payment_type": "Receive",
+				"party_type":   "Customer",
+				"party":        customer,
+				"paid_amount":  paidAmount,
+				"posting_date": today,
+				"company":      company,
+				"references": []map[string]interface{}{
+					{
+						"reference_doctype":  "Sales Invoice",
+						"reference_name":     invoiceName,
+						"total_amount":       grandTotal,
+						"outstanding_amount": outstanding,
+						"allocated_amount":   paidAmount,
+					},
+				},
+			}
+
+			result, err = m.client.Request("POST", "Payment%20Entry", body)
+			if err != nil {
+				return formSubmittedMsg{false, err.Error()}
+			}
+
+			if data, ok := result["data"].(map[string]interface{}); ok {
+				return formSubmittedMsg{true, fmt.Sprintf("Payment created: %s", data["name"])}
+			}
+		} else {
+			// Get the Purchase Invoice
+			encoded := url.PathEscape(invoiceName)
+			result, err := m.client.Request("GET", "Purchase%20Invoice/"+encoded, nil)
+			if err != nil {
+				return formSubmittedMsg{false, err.Error()}
+			}
+
+			piData, ok := result["data"].(map[string]interface{})
+			if !ok {
+				return formSubmittedMsg{false, "Purchase invoice not found"}
+			}
+
+			docStatus, _ := piData["docstatus"].(float64)
+			if docStatus != 1 {
+				return formSubmittedMsg{false, "Purchase invoice must be submitted first"}
+			}
+
+			outstanding, _ := piData["outstanding_amount"].(float64)
+			if outstanding <= 0 {
+				return formSubmittedMsg{false, "Purchase invoice has no outstanding amount"}
+			}
+
+			paidAmount := outstanding
+			if amount > 0 {
+				if amount > outstanding {
+					return formSubmittedMsg{false, fmt.Sprintf("Amount exceeds outstanding balance of %s", m.client.FormatCurrency(outstanding))}
+				}
+				paidAmount = amount
+			}
+
+			supplier, _ := piData["supplier"].(string)
+			grandTotal, _ := piData["grand_total"].(float64)
+
+			company, err := m.client.GetCompany()
+			if err != nil {
+				return formSubmittedMsg{false, err.Error()}
+			}
+
+			today := time.Now().Format("2006-01-02")
+
+			body := map[string]interface{}{
+				"payment_type": "Pay",
+				"party_type":   "Supplier",
+				"party":        supplier,
+				"paid_amount":  paidAmount,
+				"posting_date": today,
+				"company":      company,
+				"references": []map[string]interface{}{
+					{
+						"reference_doctype":  "Purchase Invoice",
+						"reference_name":     invoiceName,
+						"total_amount":       grandTotal,
+						"outstanding_amount": outstanding,
+						"allocated_amount":   paidAmount,
+					},
+				},
+			}
+
+			result, err = m.client.Request("POST", "Payment%20Entry", body)
+			if err != nil {
+				return formSubmittedMsg{false, err.Error()}
+			}
+
+			if data, ok := result["data"].(map[string]interface{}); ok {
+				return formSubmittedMsg{true, fmt.Sprintf("Payment created: %s", data["name"])}
+			}
+		}
+
+		return formSubmittedMsg{false, "Failed to create payment"}
+	}
+}
+
+// submitPayment submits a payment entry
+func (m Model) submitPayment(name string) tea.Cmd {
+	return func() tea.Msg {
+		err := m.client.submitDocument("Payment Entry", name)
+		if err != nil {
+			return formSubmittedMsg{false, err.Error()}
+		}
+		return formSubmittedMsg{true, fmt.Sprintf("Payment submitted: %s", name)}
+	}
+}
+
+// cancelPayment cancels a payment entry
+func (m Model) cancelPayment(name string) tea.Cmd {
+	return func() tea.Msg {
+		err := m.client.cancelDocument("Payment Entry", name)
+		if err != nil {
+			return formSubmittedMsg{false, err.Error()}
+		}
+		return formSubmittedMsg{true, fmt.Sprintf("Payment cancelled: %s", name)}
+	}
+}
+
 // handleSalesKeys handles keyboard shortcuts for sales views
 func (m *Model) handleSalesKeys(key string) (tea.Model, tea.Cmd) {
 	switch m.view {
@@ -1499,6 +1840,42 @@ func (m *Model) handleSalesKeys(key string) (tea.Model, tea.Cmd) {
 				if docStatus, ok := m.itemData["docstatus"].(float64); ok && docStatus == 1 {
 					m.confirmAction = "cancel_si"
 					m.confirmMsg = fmt.Sprintf("Cancel Invoice %s?", m.selectedItem)
+					m.prevView = m.view
+					m.view = ViewConfirmAction
+					return m, nil
+				}
+			}
+		case "p":
+			// Create payment for submitted invoice with outstanding amount
+			if m.itemData != nil {
+				if docStatus, ok := m.itemData["docstatus"].(float64); ok && docStatus == 1 {
+					if outstanding, ok := m.itemData["outstanding_amount"].(float64); ok && outstanding > 0 {
+						m.initCreatePaymentForm(m.selectedItem, "Receive")
+						m.prevView = m.view
+						m.view = ViewCreatePayment
+						return m, nil
+					}
+				}
+			}
+		}
+
+	case ViewPaymentDetail:
+		switch key {
+		case "s":
+			if m.itemData != nil {
+				if docStatus, ok := m.itemData["docstatus"].(float64); ok && docStatus == 0 {
+					m.confirmAction = "submit_payment"
+					m.confirmMsg = fmt.Sprintf("Submit Payment %s?", m.selectedItem)
+					m.prevView = m.view
+					m.view = ViewConfirmAction
+					return m, nil
+				}
+			}
+		case "x":
+			if m.itemData != nil {
+				if docStatus, ok := m.itemData["docstatus"].(float64); ok && docStatus == 1 {
+					m.confirmAction = "cancel_payment"
+					m.confirmMsg = fmt.Sprintf("Cancel Payment %s?", m.selectedItem)
 					m.prevView = m.view
 					m.view = ViewConfirmAction
 					return m, nil

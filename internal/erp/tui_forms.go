@@ -116,6 +116,9 @@ func (m *Model) submitCurrentForm() tea.Cmd {
 	case ViewCreatePR:
 		m.prevView = ViewPurchaseReceipts
 		return m.submitCreatePR()
+	case ViewCreatePayment:
+		m.prevView = ViewPayments
+		return m.submitCreatePayment()
 	}
 
 	return nil
@@ -176,6 +179,11 @@ func (m *Model) handleConfirmAction(confirmed bool) tea.Cmd {
 		return m.submitPR(m.selectedItem)
 	case "cancel_pr":
 		return m.cancelPR(m.selectedItem)
+	// Payment Entry actions
+	case "submit_payment":
+		return m.submitPayment(m.selectedItem)
+	case "cancel_payment":
+		return m.cancelPayment(m.selectedItem)
 	}
 
 	return nil
@@ -241,6 +249,8 @@ func (m *Model) setListTitle() {
 		m.currentList.Title = "Delivery Notes"
 	case ViewPurchaseReceipts:
 		m.currentList.Title = "Purchase Receipts"
+	case ViewPayments:
+		m.currentList.Title = "Payments"
 	}
 	m.currentList.Styles.Title = titleStyle
 }

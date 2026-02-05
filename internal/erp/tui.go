@@ -16,9 +16,9 @@ import (
 
 // Version info
 const (
-	Version = "1.7.1"
+	Version = "1.7.2"
 	Author  = "Mikel Calvo"
-	Year    = "2025"
+	Year    = "2026"
 )
 
 // Styles

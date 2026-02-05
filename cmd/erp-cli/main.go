@@ -130,7 +130,7 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Printf(`%sERPNext CLI%s - Created by Mikel Calvo in 2025
+	fmt.Printf(`%sERPNext CLI%s - Created by Mikel Calvo in %s
 
 Usage: erp-cli <command> [subcommand] [args...]
 
@@ -299,7 +299,7 @@ Usage: erp-cli <command> [subcommand] [args...]
   erp-cli stock receive "CPU-I7" 10 "Stores" --rate=450
 
 `,
-		erp.Blue, erp.Reset,
+		erp.Blue, erp.Reset, erp.Year,
 		erp.Yellow, erp.Reset,
 		erp.Green, erp.Reset, erp.Green, erp.Reset, erp.Green, erp.Reset,
 		erp.Yellow, erp.Reset,

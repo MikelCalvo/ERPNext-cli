@@ -134,22 +134,21 @@ func (c *Client) poList(opts poListOptions) error {
 	fmt.Printf("%sFetching purchase orders...%s\n", Blue, Reset)
 
 	// Build filters
-	filters := []string{}
+	filters := [][]interface{}{}
 	if opts.supplier != "" {
-		filters = append(filters, fmt.Sprintf(`["supplier","like","%%%s%%"]`, opts.supplier))
+		filters = append(filters, []interface{}{"supplier", "like", fmt.Sprintf("%%%s%%", opts.supplier)})
 	}
 	if opts.status != "" {
-		filters = append(filters, fmt.Sprintf(`["status","=","%s"]`, opts.status))
+		filters = append(filters, []interface{}{"status", "=", opts.status})
 	}
 
 	endpoint := "Purchase%20Order?limit_page_length=0&fields=[\"name\",\"supplier\",\"transaction_date\",\"status\",\"grand_total\",\"docstatus\"]&order_by=creation%20desc"
 	if len(filters) > 0 {
-		filterStr := "[" + filters[0]
-		for i := 1; i < len(filters); i++ {
-			filterStr += "," + filters[i]
+		encoded, err := encodeFilters(filters)
+		if err != nil {
+			return err
 		}
-		filterStr += "]"
-		endpoint += "&filters=" + url.QueryEscape(filterStr)
+		endpoint += "&filters=" + encoded
 	}
 
 	result, err := c.Request("GET", endpoint, nil)
@@ -407,22 +406,21 @@ func (c *Client) piList(opts piListOptions) error {
 	fmt.Printf("%sFetching purchase invoices...%s\n", Blue, Reset)
 
 	// Build filters
-	filters := []string{}
+	filters := [][]interface{}{}
 	if opts.supplier != "" {
-		filters = append(filters, fmt.Sprintf(`["supplier","like","%%%s%%"]`, opts.supplier))
+		filters = append(filters, []interface{}{"supplier", "like", fmt.Sprintf("%%%s%%", opts.supplier)})
 	}
 	if opts.status != "" {
-		filters = append(filters, fmt.Sprintf(`["status","=","%s"]`, opts.status))
+		filters = append(filters, []interface{}{"status", "=", opts.status})
 	}
 
 	endpoint := "Purchase%20Invoice?limit_page_length=0&fields=[\"name\",\"supplier\",\"posting_date\",\"status\",\"grand_total\",\"docstatus\"]&order_by=creation%20desc"
 	if len(filters) > 0 {
-		filterStr := "[" + filters[0]
-		for i := 1; i < len(filters); i++ {
-			filterStr += "," + filters[i]
+		encoded, err := encodeFilters(filters)
+		if err != nil {
+			return err
 		}
-		filterStr += "]"
-		endpoint += "&filters=" + url.QueryEscape(filterStr)
+		endpoint += "&filters=" + encoded
 	}
 
 	result, err := c.Request("GET", endpoint, nil)
@@ -630,14 +628,9 @@ func (c *Client) submitDocument(doctype, name string) error {
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return fmt.Errorf("failed to parse response: %s", string(respBody))
-	}
-
-	if exc, ok := result["exception"]; ok {
-		return fmt.Errorf("submit failed: %v", exc)
+	_, err = parseAPIResponse(resp.StatusCode, respBody)
+	if err != nil {
+		return fmt.Errorf("submit failed: %w", err)
 	}
 
 	return nil
@@ -673,14 +666,9 @@ func (c *Client) cancelDocument(doctype, name string) error {
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return fmt.Errorf("failed to parse response: %s", string(respBody))
-	}
-
-	if exc, ok := result["exception"]; ok {
-		return fmt.Errorf("cancel failed: %v", exc)
+	_, err = parseAPIResponse(resp.StatusCode, respBody)
+	if err != nil {
+		return fmt.Errorf("cancel failed: %w", err)
 	}
 
 	return nil

@@ -111,11 +111,16 @@ func (c *Client) serialCreate(serialNo, itemCode string, opts serialOptions) err
 func (c *Client) serialList(itemCode, warehouse string) error {
 	fmt.Printf("%sFetching serial numbers for: %s%s\n", Blue, itemCode, Reset)
 
-	filter := fmt.Sprintf(`[["item_code","=","%s"]]`, itemCode)
-	if warehouse != "" {
-		filter = fmt.Sprintf(`[["item_code","=","%s"],["warehouse","=","%s"]]`, itemCode, warehouse)
+	filters := [][]interface{}{
+		{"item_code", "=", itemCode},
 	}
-	encodedFilter := url.QueryEscape(filter)
+	if warehouse != "" {
+		filters = append(filters, []interface{}{"warehouse", "=", warehouse})
+	}
+	encodedFilter, err := encodeFilters(filters)
+	if err != nil {
+		return err
+	}
 
 	result, err := c.Request("GET", "Serial%20No?filters="+encodedFilter+"&fields=[\"name\",\"warehouse\",\"status\",\"purchase_date\"]&limit_page_length=0", nil)
 	if err != nil {

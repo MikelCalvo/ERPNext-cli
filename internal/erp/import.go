@@ -113,10 +113,11 @@ func (c *Client) exportItems(outputFile string, templatesOnly bool) error {
 	defer file.Close()
 
 	writer := csv.NewWriter(file)
-	defer writer.Flush()
 
 	header := []string{"item_code", "item_name", "item_group", "stock_uom", "has_variants", "variant_of"}
-	writer.Write(header)
+	if err := writer.Write(header); err != nil {
+		return fmt.Errorf("failed to write CSV header: %w", err)
+	}
 
 	count := 0
 	if data, ok := result["data"].([]interface{}); ok {
@@ -128,10 +129,17 @@ func (c *Client) exportItems(outputFile string, templatesOnly bool) error {
 						row[i] = fmt.Sprintf("%v", val)
 					}
 				}
-				writer.Write(row)
+				if err := writer.Write(row); err != nil {
+					return fmt.Errorf("failed to write CSV row: %w", err)
+				}
 				count++
 			}
 		}
+	}
+
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return fmt.Errorf("failed to write CSV: %w", err)
 	}
 
 	fmt.Printf("%s✓ Exported %d %s to %s%s\n", Green, count, itemType, outputFile, Reset)
@@ -153,10 +161,11 @@ func (c *Client) exportAttributes(outputFile string) error {
 	defer file.Close()
 
 	writer := csv.NewWriter(file)
-	defer writer.Flush()
 
 	header := []string{"attribute_name", "numeric_values", "from_range", "to_range", "increment", "values"}
-	writer.Write(header)
+	if err := writer.Write(header); err != nil {
+		return fmt.Errorf("failed to write CSV header: %w", err)
+	}
 
 	count := 0
 	if data, ok := result["data"].([]interface{}); ok {
@@ -189,11 +198,18 @@ func (c *Client) exportAttributes(outputFile string) error {
 					}
 					row = append(row, strings.Join(values, "|"))
 
-					writer.Write(row)
+					if err := writer.Write(row); err != nil {
+						return fmt.Errorf("failed to write CSV row: %w", err)
+					}
 					count++
 				}
 			}
 		}
+	}
+
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return fmt.Errorf("failed to write CSV: %w", err)
 	}
 
 	fmt.Printf("%s✓ Exported %d attributes to %s%s\n", Green, count, outputFile, Reset)
@@ -236,11 +252,12 @@ func (c *Client) exportVariants(template, outputFile string) error {
 	defer file.Close()
 
 	writer := csv.NewWriter(file)
-	defer writer.Flush()
 
 	header := []string{"template", "item_code", "item_name"}
 	header = append(header, attrNames...)
-	writer.Write(header)
+	if err := writer.Write(header); err != nil {
+		return fmt.Errorf("failed to write CSV header: %w", err)
+	}
 
 	count := 0
 	if data, ok := result["data"].([]interface{}); ok {
@@ -276,11 +293,18 @@ func (c *Client) exportVariants(template, outputFile string) error {
 						row = append(row, attrValues[attrName])
 					}
 
-					writer.Write(row)
+					if err := writer.Write(row); err != nil {
+						return fmt.Errorf("failed to write CSV row: %w", err)
+					}
 					count++
 				}
 			}
 		}
+	}
+
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return fmt.Errorf("failed to write CSV: %w", err)
 	}
 
 	fmt.Printf("%s✓ Exported %d variants to %s%s\n", Green, count, outputFile, Reset)

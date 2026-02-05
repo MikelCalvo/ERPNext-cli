@@ -38,6 +38,40 @@ func decodeJSON(r io.Reader, v interface{}) error {
 	return json.NewDecoder(r).Decode(v)
 }
 
+func parseAPIResponse(statusCode int, respBody []byte) (map[string]interface{}, error) {
+	trimmed := bytes.TrimSpace(respBody)
+	if len(trimmed) == 0 {
+		if statusCode >= 200 && statusCode < 300 {
+			return map[string]interface{}{}, nil
+		}
+		return nil, fmt.Errorf("API error: HTTP %d (empty response)", statusCode)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		if statusCode < 200 || statusCode >= 300 {
+			return nil, fmt.Errorf("API error: HTTP %d: %s", statusCode, strings.TrimSpace(string(respBody)))
+		}
+		return nil, fmt.Errorf("failed to parse response: %s", string(respBody))
+	}
+
+	if statusCode < 200 || statusCode >= 300 {
+		if exc, ok := result["exception"]; ok {
+			return nil, fmt.Errorf("API error (HTTP %d): %v", statusCode, exc)
+		}
+		if msg, ok := result["message"]; ok {
+			return nil, fmt.Errorf("API error (HTTP %d): %v", statusCode, msg)
+		}
+		return nil, fmt.Errorf("API error (HTTP %d)", statusCode)
+	}
+
+	if exc, ok := result["exception"]; ok {
+		return nil, fmt.Errorf("API error: %v", exc)
+	}
+
+	return result, nil
+}
+
 // Colors for terminal output
 const (
 	Red    = "\033[0;31m"
@@ -216,16 +250,7 @@ func (c *Client) Request(method, endpoint string, body interface{}) (map[string]
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	var result map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %s", string(respBody))
-	}
-
-	if exc, ok := result["exception"]; ok {
-		return nil, fmt.Errorf("API error: %v", exc)
-	}
-
-	return result, nil
+	return parseAPIResponse(resp.StatusCode, respBody)
 }
 
 // CmdPing tests the connection
@@ -358,7 +383,11 @@ func (c *Client) CmdConfig() error {
 		fmt.Printf("  VPN URL: %snot configured%s\n", Yellow, Reset)
 	}
 	fmt.Printf("  Internet URL: %s\n", c.Config.ERPURL)
-	fmt.Printf("  API Key: %s...\n", c.Config.APIKey[:8])
+	apiKey := c.Config.APIKey
+	if len(apiKey) > 8 {
+		apiKey = apiKey[:8] + "..."
+	}
+	fmt.Printf("  API Key: %s\n", apiKey)
 	fmt.Printf("  API Secret: ****\n")
 
 	if c.Config.NginxCookie != "" {

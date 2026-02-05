@@ -99,24 +99,28 @@ func parsePaymentListOptions(args []string) paymentListOptions {
 func (c *Client) paymentList(opts paymentListOptions) error {
 	fmt.Printf("%sFetching payment entries...%s\n", Blue, Reset)
 
-	filters := []string{}
+	filters := [][]interface{}{}
 	if opts.party != "" {
-		filters = append(filters, fmt.Sprintf(`["party","like","%%%s%%"]`, opts.party))
+		filters = append(filters, []interface{}{"party", "like", fmt.Sprintf("%%%s%%", opts.party)})
 	}
 	if opts.paymentType != "" {
 		paymentTypeValue := "Receive"
 		if opts.paymentType == "pay" {
 			paymentTypeValue = "Pay"
 		}
-		filters = append(filters, fmt.Sprintf(`["payment_type","=","%s"]`, paymentTypeValue))
+		filters = append(filters, []interface{}{"payment_type", "=", paymentTypeValue})
 	}
 	if opts.status != "" {
-		filters = append(filters, fmt.Sprintf(`["status","=","%s"]`, opts.status))
+		filters = append(filters, []interface{}{"status", "=", opts.status})
 	}
 
 	endpoint := "Payment%20Entry?limit_page_length=0&fields=[\"name\",\"payment_type\",\"party_type\",\"party\",\"paid_amount\",\"posting_date\",\"status\",\"docstatus\"]&order_by=creation%20desc"
 	if len(filters) > 0 {
-		endpoint += "&filters=" + url.QueryEscape("["+strings.Join(filters, ",")+"]")
+		encoded, err := encodeFilters(filters)
+		if err != nil {
+			return err
+		}
+		endpoint += "&filters=" + encoded
 	}
 
 	result, err := c.Request("GET", endpoint, nil)

@@ -92,22 +92,21 @@ func parsePRListOptions(args []string) prListOptions {
 func (c *Client) prList(opts prListOptions) error {
 	fmt.Printf("%sFetching purchase receipts...%s\n", Blue, Reset)
 
-	filters := []string{}
+	filters := [][]interface{}{}
 	if opts.supplier != "" {
-		filters = append(filters, fmt.Sprintf(`["supplier","like","%%%s%%"]`, opts.supplier))
+		filters = append(filters, []interface{}{"supplier", "like", fmt.Sprintf("%%%s%%", opts.supplier)})
 	}
 	if opts.status != "" {
-		filters = append(filters, fmt.Sprintf(`["status","=","%s"]`, opts.status))
+		filters = append(filters, []interface{}{"status", "=", opts.status})
 	}
 
 	endpoint := "Purchase%20Receipt?limit_page_length=0&fields=[\"name\",\"supplier\",\"posting_date\",\"status\",\"grand_total\",\"docstatus\"]&order_by=creation%20desc"
 	if len(filters) > 0 {
-		filterStr := "[" + filters[0]
-		for i := 1; i < len(filters); i++ {
-			filterStr += "," + filters[i]
+		encoded, err := encodeFilters(filters)
+		if err != nil {
+			return err
 		}
-		filterStr += "]"
-		endpoint += "&filters=" + url.QueryEscape(filterStr)
+		endpoint += "&filters=" + encoded
 	}
 
 	result, err := c.Request("GET", endpoint, nil)

@@ -150,22 +150,21 @@ func parseQuotationListOptions(args []string) quotationListOptions {
 func (c *Client) quotationList(opts quotationListOptions) error {
 	fmt.Printf("%sFetching quotations...%s\n", Blue, Reset)
 
-	filters := []string{}
+	filters := [][]interface{}{}
 	if opts.customer != "" {
-		filters = append(filters, fmt.Sprintf(`["party_name","like","%%%s%%"]`, opts.customer))
+		filters = append(filters, []interface{}{"party_name", "like", fmt.Sprintf("%%%s%%", opts.customer)})
 	}
 	if opts.status != "" {
-		filters = append(filters, fmt.Sprintf(`["status","=","%s"]`, opts.status))
+		filters = append(filters, []interface{}{"status", "=", opts.status})
 	}
 
 	endpoint := "Quotation?limit_page_length=0&fields=[\"name\",\"party_name\",\"transaction_date\",\"status\",\"grand_total\",\"docstatus\"]&order_by=creation%20desc"
 	if len(filters) > 0 {
-		filterStr := "[" + filters[0]
-		for i := 1; i < len(filters); i++ {
-			filterStr += "," + filters[i]
+		encoded, err := encodeFilters(filters)
+		if err != nil {
+			return err
 		}
-		filterStr += "]"
-		endpoint += "&filters=" + url.QueryEscape(filterStr)
+		endpoint += "&filters=" + encoded
 	}
 
 	result, err := c.Request("GET", endpoint, nil)
@@ -440,22 +439,21 @@ func parseSOListOptions(args []string) soListOptions {
 func (c *Client) soList(opts soListOptions) error {
 	fmt.Printf("%sFetching sales orders...%s\n", Blue, Reset)
 
-	filters := []string{}
+	filters := [][]interface{}{}
 	if opts.customer != "" {
-		filters = append(filters, fmt.Sprintf(`["customer","like","%%%s%%"]`, opts.customer))
+		filters = append(filters, []interface{}{"customer", "like", fmt.Sprintf("%%%s%%", opts.customer)})
 	}
 	if opts.status != "" {
-		filters = append(filters, fmt.Sprintf(`["status","=","%s"]`, opts.status))
+		filters = append(filters, []interface{}{"status", "=", opts.status})
 	}
 
 	endpoint := "Sales%20Order?limit_page_length=0&fields=[\"name\",\"customer\",\"transaction_date\",\"status\",\"grand_total\",\"docstatus\"]&order_by=creation%20desc"
 	if len(filters) > 0 {
-		filterStr := "[" + filters[0]
-		for i := 1; i < len(filters); i++ {
-			filterStr += "," + filters[i]
+		encoded, err := encodeFilters(filters)
+		if err != nil {
+			return err
 		}
-		filterStr += "]"
-		endpoint += "&filters=" + url.QueryEscape(filterStr)
+		endpoint += "&filters=" + encoded
 	}
 
 	result, err := c.Request("GET", endpoint, nil)
@@ -593,12 +591,12 @@ func (c *Client) soCreateFromQuotation(qtnName string) error {
 		for _, item := range items {
 			if m, ok := item.(map[string]interface{}); ok {
 				soItems = append(soItems, map[string]interface{}{
-					"item_code":        m["item_code"],
-					"qty":              m["qty"],
-					"rate":             m["rate"],
-					"delivery_date":    today,
-					"prevdoc_docname":  qtnName,
-					"quotation_item":   m["name"],
+					"item_code":       m["item_code"],
+					"qty":             m["qty"],
+					"rate":            m["rate"],
+					"delivery_date":   today,
+					"prevdoc_docname": qtnName,
+					"quotation_item":  m["name"],
 				})
 			}
 		}
@@ -777,22 +775,21 @@ func parseSIListOptions(args []string) siListOptions {
 func (c *Client) siList(opts siListOptions) error {
 	fmt.Printf("%sFetching sales invoices...%s\n", Blue, Reset)
 
-	filters := []string{}
+	filters := [][]interface{}{}
 	if opts.customer != "" {
-		filters = append(filters, fmt.Sprintf(`["customer","like","%%%s%%"]`, opts.customer))
+		filters = append(filters, []interface{}{"customer", "like", fmt.Sprintf("%%%s%%", opts.customer)})
 	}
 	if opts.status != "" {
-		filters = append(filters, fmt.Sprintf(`["status","=","%s"]`, opts.status))
+		filters = append(filters, []interface{}{"status", "=", opts.status})
 	}
 
 	endpoint := "Sales%20Invoice?limit_page_length=0&fields=[\"name\",\"customer\",\"posting_date\",\"status\",\"grand_total\",\"docstatus\"]&order_by=creation%20desc"
 	if len(filters) > 0 {
-		filterStr := "[" + filters[0]
-		for i := 1; i < len(filters); i++ {
-			filterStr += "," + filters[i]
+		encoded, err := encodeFilters(filters)
+		if err != nil {
+			return err
 		}
-		filterStr += "]"
-		endpoint += "&filters=" + url.QueryEscape(filterStr)
+		endpoint += "&filters=" + encoded
 	}
 
 	result, err := c.Request("GET", endpoint, nil)

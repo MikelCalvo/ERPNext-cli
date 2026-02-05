@@ -70,8 +70,13 @@ func (m Model) loadStock() tea.Cmd {
 // loadStockDetail fetches stock detail for an item
 func (m Model) loadStockDetail(itemCode string) tea.Cmd {
 	return func() tea.Msg {
-		filter := fmt.Sprintf(`[["item_code","=","%s"]]`, itemCode)
-		encodedFilter := url.QueryEscape(filter)
+		filters := [][]interface{}{
+			{"item_code", "=", itemCode},
+		}
+		encodedFilter, err := encodeFilters(filters)
+		if err != nil {
+			return errorMsg{err}
+		}
 
 		result, err := m.client.Request("GET", "Bin?filters="+encodedFilter+"&fields=[\"warehouse\",\"actual_qty\",\"reserved_qty\",\"ordered_qty\",\"stock_value\"]", nil)
 		if err != nil {
@@ -142,8 +147,14 @@ func (m Model) loadSerials(itemCode string) tea.Cmd {
 	return func() tea.Msg {
 		endpoint := "Serial%20No?limit_page_length=100&fields=[\"name\",\"item_code\",\"warehouse\",\"status\"]&order_by=creation%20desc"
 		if itemCode != "" {
-			filter := url.QueryEscape(fmt.Sprintf(`[["item_code","=","%s"]]`, itemCode))
-			endpoint += "&filters=" + filter
+			filters := [][]interface{}{
+				{"item_code", "=", itemCode},
+			}
+			encodedFilter, err := encodeFilters(filters)
+			if err != nil {
+				return errorMsg{err}
+			}
+			endpoint += "&filters=" + encodedFilter
 		}
 
 		result, err := m.client.Request("GET", endpoint, nil)

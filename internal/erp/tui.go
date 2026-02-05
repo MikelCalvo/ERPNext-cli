@@ -2,6 +2,7 @@ package erp
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -264,8 +265,8 @@ type Model struct {
 	viewport         viewport.Model // Scrollable viewport for dashboard
 	viewportReady    bool
 	// v1.8.0: List improvements
-	sortOrder    int      // 0=date desc, 1=date asc, 2=name, 3=total
-	listItems    []ListItem // Store items for totals calculation
+	sortOrder int        // 0=date desc, 1=date asc, 2=name, 3=total
+	listItems []ListItem // Store items for totals calculation
 }
 
 // Messages
@@ -477,7 +478,8 @@ func (m Model) loadBrands() tea.Cmd {
 
 func (m Model) loadItemDetail(code string) tea.Cmd {
 	return func() tea.Msg {
-		result, err := m.client.Request("GET", "Item/"+code, nil)
+		encoded := url.PathEscape(code)
+		result, err := m.client.Request("GET", "Item/"+encoded, nil)
 		if err != nil {
 			return errorMsg{err}
 		}
@@ -491,7 +493,8 @@ func (m Model) loadItemDetail(code string) tea.Cmd {
 
 func (m Model) loadAttrDetail(name string) tea.Cmd {
 	return func() tea.Msg {
-		result, err := m.client.Request("GET", "Item%20Attribute/"+name, nil)
+		encoded := url.PathEscape(name)
+		result, err := m.client.Request("GET", "Item%20Attribute/"+encoded, nil)
 		if err != nil {
 			return errorMsg{err}
 		}
@@ -506,15 +509,16 @@ func (m Model) loadAttrDetail(name string) tea.Cmd {
 func (m Model) deleteItem(itemType, name string) tea.Cmd {
 	return func() tea.Msg {
 		var endpoint string
+		encoded := url.PathEscape(name)
 		switch itemType {
 		case "attr":
-			endpoint = "Item%20Attribute/" + name
+			endpoint = "Item%20Attribute/" + encoded
 		case "item", "template":
-			endpoint = "Item/" + name
+			endpoint = "Item/" + encoded
 		case "group":
-			endpoint = "Item%20Group/" + name
+			endpoint = "Item%20Group/" + encoded
 		case "brand":
-			endpoint = "Brand/" + name
+			endpoint = "Brand/" + encoded
 		}
 
 		_, err := m.client.Request("DELETE", endpoint, nil)

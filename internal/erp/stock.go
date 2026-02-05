@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strconv"
 )
 
@@ -125,11 +124,16 @@ func (c *Client) CmdStock(args []string) error {
 func (c *Client) stockGet(itemCode, warehouse string) error {
 	fmt.Printf("%sFetching stock for: %s%s\n", Blue, itemCode, Reset)
 
-	filter := fmt.Sprintf(`[["item_code","=","%s"]]`, itemCode)
-	if warehouse != "" {
-		filter = fmt.Sprintf(`[["item_code","=","%s"],["warehouse","=","%s"]]`, itemCode, warehouse)
+	filters := [][]interface{}{
+		{"item_code", "=", itemCode},
 	}
-	encodedFilter := url.QueryEscape(filter)
+	if warehouse != "" {
+		filters = append(filters, []interface{}{"warehouse", "=", warehouse})
+	}
+	encodedFilter, err := encodeFilters(filters)
+	if err != nil {
+		return err
+	}
 
 	result, err := c.Request("GET", "Bin?filters="+encodedFilter+"&fields=[\"warehouse\",\"actual_qty\",\"reserved_qty\",\"ordered_qty\"]", nil)
 	if err != nil {
@@ -360,14 +364,9 @@ func (c *Client) submitStockEntry(name string) error {
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return fmt.Errorf("failed to parse response: %s", string(respBody))
-	}
-
-	if exc, ok := result["exception"]; ok {
-		return fmt.Errorf("submit failed: %v", exc)
+	_, err = parseAPIResponse(resp.StatusCode, respBody)
+	if err != nil {
+		return fmt.Errorf("submit failed: %w", err)
 	}
 
 	return nil

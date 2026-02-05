@@ -293,10 +293,15 @@ func (m SetupModel) validateCredentials() tea.Cmd {
 		apiKey := m.inputs[1].Value()
 		apiSecret := m.inputs[2].Value()
 		vpnURL := strings.TrimSuffix(m.inputs[3].Value(), "/")
+		nginxCookie := m.inputs[4].Value()
+		nginxCookieName := m.inputs[5].Value()
+		if nginxCookie != "" && nginxCookieName == "" {
+			nginxCookieName = "auth_cookie"
+		}
 
 		// Try VPN URL first if provided
 		if vpnURL != "" {
-			user, err := validateConnection(vpnURL, apiKey, apiSecret)
+			user, err := validateConnection(vpnURL, apiKey, apiSecret, nginxCookieName, nginxCookie)
 			if err == nil {
 				return setupValidateMsg{
 					success: true,
@@ -308,7 +313,7 @@ func (m SetupModel) validateCredentials() tea.Cmd {
 		}
 
 		// Try main URL
-		user, err := validateConnection(url, apiKey, apiSecret)
+		user, err := validateConnection(url, apiKey, apiSecret, nginxCookieName, nginxCookie)
 		if err != nil {
 			return setupValidateMsg{
 				success: false,
@@ -325,7 +330,7 @@ func (m SetupModel) validateCredentials() tea.Cmd {
 	}
 }
 
-func validateConnection(url, apiKey, apiSecret string) (string, error) {
+func validateConnection(url, apiKey, apiSecret, cookieName, cookieValue string) (string, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 
 	fullURL := fmt.Sprintf("%s/api/method/frappe.auth.get_logged_user", url)
@@ -335,6 +340,12 @@ func validateConnection(url, apiKey, apiSecret string) (string, error) {
 	}
 
 	req.Header.Set("Authorization", fmt.Sprintf("token %s:%s", apiKey, apiSecret))
+	if cookieValue != "" {
+		if cookieName == "" {
+			cookieName = "auth_cookie"
+		}
+		req.AddCookie(&http.Cookie{Name: cookieName, Value: cookieValue})
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {
